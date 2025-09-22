@@ -249,46 +249,6 @@ def ReadData(name):                                             # read value of 
     nDlines = len(D)                                            # nDlines = number of channels with data (1024)
     f.close()
     return(D, nDlines)                                          # gives values to line 58
-#-----------------------------------------------------------------------------------
-
-#def LeastSquares(x, y, multip1):                                # LEAST-SQUARES FIRST ORDER FIT
-    n = len(x)
-    xsum = 0
-    ysum = 0
-    xsqsum = []
-    ysqsum = []
-    xysum = []
-
-    for i in range(n):
-        xsum = xsum + x[i]
-        ysum = ysum + y[i]
-        xsqsum.append(x[i]*x[i])
-        ysqsum.append(y[i]*y[i])
-        xysum.append(x[i]*y[i])
-    xsqsum = sum(xsqsum)
-    ysqsum = sum(ysqsum)
-    xysum = sum(xysum)
-    xsumsq = xsum * xsum
-    ysumsq = ysum * ysum
-    #print('xsum = ', xsum, 'ysum = ', ysum, 'x2sum = ', xsqsum, 'y2sum = ', ysqsum)
-    
-    a = 1.0 * (ysum * xsqsum - xsum * xysum) / (n * xsqsum - xsumsq)    # y = a + bx
-    b = 1.0 * (n * xysum - xsum * ysum) / (1.0 * n * xsqsum - xsumsq)
-
-    chisquared = 0.
-    for i in range(n):
-        #print(y[i], y[i]/(multip1 ** 2))
-        #print(y[i], np.sqrt((int(y[i]) / multip1 ** 2)))
-        diff = (((a + b * x[i]) - y[i]) ** 2) / np.sqrt (y[i] / multip1 ** 2)
-        chisquared = chisquared + diff
-    print('chisquared = ', chisquared)
-
-    chi_squared = 0.
-    for i in range(n):                                          # chi-squared statistic
-        sigma_squared = y[i]                                    # for statistical uncertainties (counting experiments)
-        chi_squared = chi_squared + (1 / sigma_squared) * (y[i] - a - b * x[i]) ** 2
-
-    return(a,b)
 
 #-----------------------------------------------------------------------------------
 
@@ -297,53 +257,5 @@ def LSpoly3(x, a, b, c, d):                                     # least-squares 
     return y
 
 #-----------------------------------------------------------------------------------
-
-def spline(x, y):                                               # by Damon Todd
-    n = len(x)
-    D = []
-    B = []
-    y2 = []
-    
-    for i in range(n):
-        D.append(0.)
-        B.append(0.)
-        y2.append(0.)
-
-    dx = x[1] - x[0]
-    B[0] = y2[0] = 0.0
-    D[0] = 1.0
-    y2[1] = dx
-    D[1] = 4.0 * (dx)
-    B[1] = 6.0 * (y[2] - 2.0 * y[1] + y[0]) / dx
-    for j in range(2, n - 1):
-        i = j - 1
-        k = j + 1
-        B[j] = y2[i] / D[i]
-        y2[j] = dx
-        D[j] = 4.0 * dx - y2[j] * B[j]
-        B[j] = 6.0 * (y[j + 1] - 2.0 * y[j] + y[j - 1]) / dx - B[j - 1] * B[j] # should the whole denom be in parentheses??
-
-    B[n - 1] = 0.0
-    y2[n - 1] = 0.0
-    y2[n - 2] = B[n - 2] / D[n - 2]
-    for i in range(n - 3, 0, -1):
-        y2[i] = (B[i] - y2[i] * y2[i + 1]) / D[i]
-    y2[0] = 0.0
-    return y2
-
-#-----------------------------------------------------------------------------------
-
-def splint(x, y, y2, X):                                        # by Damon Todd
-    n = len(y)
-    h = x[2] - x[1]
-    if(X < x[0]):
-        X = x[0]                                                # questionable solution method
-    if(X > x[n - 1]):
-        X = x[n - 1]                                            # questionable solution method
-    for i in range(1, n):
-        if(X <= x[i]):
-            l1 = X - x[i - 1]
-            l2 = x[i] - X
-    return ((y2[i] * pow(l1, 3) + y2[i - 1] * pow(l2, 3)) / (6.0 * h) + (y[i] / h - y2[i] * h / 6.0) * l1 + (y[i - 1] / h - y2[i - 1] * h / 6.0 * l2))
 
 checklivetime()
