@@ -7,35 +7,9 @@ import matplotlib.pyplot as plt
 from pylab import figure, show
 #04/27/15 Corrected efficiency below 60 keV. Below 10 keV correction is not correct. Ignore data below 10 keV.
 
-xbgnames = []                                                      # empty list, to fill with .mca files
-for filename in glob.glob('*.mca'):
-    with open(os.path.join(os.getcwd(), filename), 'r') as f: # open in read-only mode
-        xbgnames.append(filename)
-print(xbgnames)
-
-#-----------------------------------------------------------------------------------
-#def checklivetime():
-    #lists = [[]] * len(xbgnames)    # creates list length of xbgnames
-    #livetime = lists
-    #for i in range(len(lists)): # check for normalization   # is this actually checking for normalization? i don't think so, just finding and printing livetime
-     #   r = open(xbgnames[i], 'r')
-     ##  numlines = 0
-       # while r.readline(): numlines += 1           # assigns number of lines in file to numline
-        #r.seek(0)
-        #for j in range(numlines):                   # searches line by line through file for "LIVE_TIME"
-      #      lineA = r.readline().split()
-       #     if (lineA[0] == 'LIVE_TIME'):
-        #        livetime[i] = float(lineA[2])
-         #       break
-        #r.close()
-        #print(livetime)                             # writing a list of livetimes for each file
-    #multip1 = livetime[i]
-   #(xbgnames) = GetxbgFile(xbgnames, livetimes)
-
 #-----------------------------------------------------------------------------------
 
 def ReadData(name):                                             # read value of livetime, total # lines, return channels, counts
-    #print('hello')
     f = open(name, 'r')
     nlines = 0                                                  # nlines = total number of lines in file
     nDlines = 0                                                  
@@ -48,18 +22,13 @@ def ReadData(name):                                             # read value of 
 
     for i in range(nlines):
         line = f.readline().split()
-        #print(line)
-        if line[0] == '<<DATA>>':
+        if line[0] == 'LIVE_TIME':                              # finds and assigns livetime from the 3 element of the livetime list
+            livetime = float(line[2])
+        if line[0] == '<<DATA>>':                               # could use match case instead of multiple ifs
             Dlocation = i                                       # Dlocation = data starts after this line
             nDlines = nlines - 1 - Dlocation - 1
             break                                               # break stops readline where it found the '<<DATA>>'
-    #print(nDlines, nlines, Dlocation)                          # check against .mca
-
-    for i in range(nlines):                                     # finds livetime
-        lineA = f.readline().split()
-        if (lineA[0] == 'LIVE_TIME'):
-            livetime = float(lineA[2])
-            break
+    #print(livetime, nDlines, nlines, Dlocation)        # THIS WORKS        # check against .mca
 
     D = []
     for i in range(nDlines):
@@ -70,13 +39,16 @@ def ReadData(name):                                             # read value of 
         D.append(int(Ds[0]))                                    # turns bin data into list
     nDlines = len(D)                                            # nDlines = number of channels with data (1024)
     f.close()
-    return(livetime, nDlines, D)                                          # gives values to line 37
+    return(livetime, nDlines, D)                                # THIS WORKS
 
+#-----------------------------------------------------------------------------------
+
+xbgnames = []                                                   # empty list, to fill with .mca file names
 for filename in glob.glob('*.mca'):
-    with open(os.path.join(os.getcwd(), filename), 'r') as f: # open in read-only mode
+    with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
         ReadData(f.name)
         xbgnames.append(filename)
-#print(xbgnames)
+#print(xbgnames[0])
 
 #-----------------------------------------------------------------------------------
 
@@ -230,6 +202,9 @@ def GetxbgFile(xbgname, livetimes):
     return()
 
 #-----------------------------------------------------------------------------------
+#for filename in glob.glob('*.mca'):
+    with open(os.path.join(os.getcwd(), filename), 'r') as f: 
+        GetxbgFile(f.name,xbgnames[filename])
 
 EffEnergy = []
 EffAbs = []
@@ -258,6 +233,3 @@ def LSpoly3(x, a, b, c, d):                                     # least-squares 
     return y
 
 #-----------------------------------------------------------------------------------
-
-
-#checklivetime()
