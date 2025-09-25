@@ -30,7 +30,7 @@ def ReadData(name):                                             # read value of 
             break                                               # break stops readline where it found the '<<DATA>>'
     #print(livetime, nDlines, nlines, Dlocation)        # THIS WORKS        # check against .mca
 
-    D = []
+    D = []                                                      # raw data list
     for i in range(nDlines):
         Ds = f.readline().split()                               # starts reading lines again at the beginning of the data
         if Ds[0] == '<<END>>':
@@ -43,21 +43,10 @@ def ReadData(name):                                             # read value of 
 
 #-----------------------------------------------------------------------------------
 
-xbgnames = []                                                   # empty list, to fill with .mca file names
-for filename in glob.glob('*.mca'):
-    with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
-        ReadData(f.name)
-        xbgnames.append(filename)
-#print(xbgnames[0])
-
-#-----------------------------------------------------------------------------------
-
 # Function to open X-Ray & Background Data
-def GetxbgFile(xbgname, livetimes):
-    (livetimes, xbgnDlines, xbgD) = ReadData(xbgname)               # calls ReadData function
-    print('Livetime:', livetimes)
+def GetxbgFile(xbgname, livetime1):
     for i in range(xbgnDlines):                                 # divide data by livetime, now in counts/s
-        xbgD[i] = xbgD[i] / livetimes
+        xbgD[i] = xbgD[i] / livetime1                                # nDlines should always equal 1024
         if xbgD[i] <= 0:
             xbgD[i] = 0.0001
 
@@ -202,9 +191,6 @@ def GetxbgFile(xbgname, livetimes):
     return()
 
 #-----------------------------------------------------------------------------------
-#for filename in glob.glob('*.mca'):
-    with open(os.path.join(os.getcwd(), filename), 'r') as f: 
-        GetxbgFile(f.name,xbgnames[filename])
 
 EffEnergy = []
 EffAbs = []
@@ -233,3 +219,12 @@ def LSpoly3(x, a, b, c, d):                                     # least-squares 
     return y
 
 #-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+xbgnames = []                                                   # empty list, to fill with .mca file names
+for filename in glob.glob('*.mca'):
+    with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
+        (livetimes, xbgnDlines, xbgD) = ReadData(f.name)
+        xbgnames.append(filename)
+        GetxbgFile(filename, livetimes)
+print(xbgnames)
