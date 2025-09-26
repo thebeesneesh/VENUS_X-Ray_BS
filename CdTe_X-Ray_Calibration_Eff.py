@@ -22,7 +22,7 @@ def ReadData(name):                                             # read value of 
 
     for i in range(nlines):
         line = f.readline().split()
-        if line[0] == 'LIVE_TIME':                              # finds and assigns livetime from the 3 element of the livetime list
+        if line[0] == 'LIVE_TIME':                              # finds and assigns livetime from the 3-element livetime list
             livetime = float(line[2])
         if line[0] == '<<DATA>>':                               # could use match case instead of multiple ifs
             Dlocation = i                                       # Dlocation = data starts after this line
@@ -43,34 +43,35 @@ def ReadData(name):                                             # read value of 
 
 #-----------------------------------------------------------------------------------
 
-# Function to open X-Ray & Background Data
+# Function to open, normalize, calibrate, correct for detector efficiency,  X-Ray & Background Data
 def GetxbgFile(xbgname, livetime1):
-    for i in range(xbgnDlines):                                 # divide data by livetime, now in counts/s
-        xbgD[i] = xbgD[i] / livetime1                                # nDlines should always equal 1024
+    for i in range(xbgnDlines):                                 # divide data by livetime, now in counts/s (normalized)
+        xbgD[i] = xbgD[i] / livetime1                           # nDlines should always equal 1024
         if xbgD[i] <= 0:
             xbgD[i] = 0.0001
 
-    aCal = 0.16594626                                      # CHECK GAIN
+    aCal = 0.16594626                                           # CHECK GAIN
     bCal = -0.4991754892        
     #print('Energy Calibration = ' +  str(aCal) + '*Channel + ' + str(bCal))
-    E = []                                                      # calibrated energy spectrum
+
+    E = []                                                      # list for calibrated energy spectrum
     for i in range(xbgnDlines):
         energy = aCal*i + bCal
         E.append(energy)
-    #print(E)
-    fig = figure(facecolor = 'w')                               # plot calibrated x-ray spectrum 
-    ax = fig.add_subplot(111, frame_on = True, facecolor = 'lightgreen')
+    #print('E:',E)
+
+    fig = figure(facecolor = 'w')                               # plot normalized and calibrated x-ray spectrum 
+    ax = fig.add_subplot(111, frame_on = True, facecolor = 'darkseagreen')
     #ax.step(E, xbgD, where = 'pre', color = 'k')
     ax.semilogy(E, xbgD, linestyle = '-', color = 'black')
     ax.set_xlim(0, 300)
     ax.set_ylim(0.01, 10)
     ax.set_xlabel('Energy (keV)', color = 'black')
     ax.set_ylabel('Counts/s', color = 'black')
-    ax.set_title('Calibrated X-Ray Spectrum')
+    ax.set_title(xbgname,'Calibrated X-Ray Spectrum')
     show()
     
-    print('Accounting for Efficiencies...')                          # correct for detector efficiencies           # if NO, will throw error on Spectral Temp calc                       
-    (EffEnergy, EffAbs) = eff(E)                            # call Absolute Efficiency function for CdTe detector
+    print('Accounting for Efficiencies...')                     # correct for detector efficiencies           # if NO, will throw error on Spectral Temp calc                       
     parameters, covariance = curve_fit(LSpoly3, EffEnergy, EffAbs) # call Least-Squares 3rd-Order Polynomial Fit for Scintillator Efficiency function
     fit_a = parameters[0]
     fit_b = parameters[1]
@@ -78,24 +79,25 @@ def GetxbgFile(xbgname, livetime1):
     fit_d = parameters[3]
     #print('a, b, c, d = ', fit_a, fit_b, fit_c, fit_d)
 
-    fit = []                                                # y = a + bx + cx^2 + dx^3
-    Effxray = []                                            # this fits a 3rd-order polynomial to the efficiency curve (could try higher-order or spline fit)
+    fit = []                                                    # y = a + bx + cx^2 + dx^3
+    Effxray = []                                                # this fits a 3rd-order polynomial to the efficiency curve (could try higher-order or spline fit)
     diff = []
     for i in range(len(EffEnergy)):
         fits = fit_a + fit_b*EffEnergy[i] + fit_c*EffEnergy[i]*EffEnergy[i] + fit_d*EffEnergy[i]*EffEnergy[i]*EffEnergy[i]
         fit.append(fits)
-    for i in range(len(E)):
-        if E[i] < 50 and E[i] > 10:
+    for i in range(len(E)):                                     # E is the detector efficiency-corrected energies for each dataset
+        if E[i] < 50 and E[i] > 10:                             # for 10 < E < 50 MeV, efficiency is 100%
             Effxrays = 1.0
             Effxray.append(Effxrays)
         else:
             Effxrays = fit_a + fit_b*E[i] + fit_c*E[i]*E[i] + fit_d*E[i]*E[i]*E[i]
             Effxray.append(Effxrays)
+    #print('Effxray:',Effxray)
 
     fig = figure(facecolor = 'lightpink')                   # efficiency plot
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'lightpink')
-    ax.plot(EffEnergy, EffAbs, linestyle = '-', color = 'black', marker = 'o', markersize = 8, label = 'Efficiency')
-    ax.plot(EffEnergy, fit, linestyle = '-', color = 'lightgreen', marker = 'o', markersize = 8, label = 'LSPoly3rd Order Fit')
+    ax.plot(EffEnergy, EffAbs, linestyle = '-', color = 'black', marker = 'o', markersize = 8, label = 'Scintillator Efficiency')
+    ax.plot(EffEnergy, fit, linestyle = '-', color = 'darkseagreen', marker = 'o', markersize = 8, label = 'Ideal LSPoly3rd Order Fit')
     ax.plot(E, Effxray, linestyle = '-', color = 'white', marker = 'o', markersize = 5, label = 'Effective X-Ray Spectrum')     # is this right? in sensitive region (>50 keV)
     ax.set_xlim(0, 410)
     ax.set_ylim(0, 1)
@@ -108,7 +110,7 @@ def GetxbgFile(xbgname, livetime1):
     CorrectedxbgD = []
     nE = []                                                 # number of counts * energy
     for i in range(len(E)):
-        CorrectedxbgD.append(xbgD[i]/Effxray[i])            # correction applied
+        CorrectedxbgD.append(xbgD[i]/Effxray[i])            # correction applied (normalized data divided by fitted 3rd-order polynomial)
         nE.append(CorrectedxbgD[i]*E[i])
     #print(E[i], CorrectedxbgD[i], nE[i])        
 
@@ -150,8 +152,7 @@ def GetxbgFile(xbgname, livetime1):
     ax2.legend()
     ax3.legend()
     ax1.set_title(xbgname)
-    show()
-    print()
+    #show()
 
     print('Calculating Spectral Temperature...')
     beginE = float(input("Enter beginning Energy (keV): "))
@@ -187,30 +188,7 @@ def GetxbgFile(xbgname, livetime1):
     wr.write("Sum in Range ")
     wr.write("%f \n"%(SumCounts))
     wr.write("\n")
-
     return()
-
-#-----------------------------------------------------------------------------------
-
-EffEnergy = []
-EffAbs = []
-def eff(E):
-    # SCINTILLATOR EFFICIENCY: probability that a photon will be completely absorbed.
-    # total attenuation 1000micron with 4mil Be window CdTe from Amptek website
-
-    EffEnergy = [51.2, 54.7, 58.5, 62.5, 66.8, 71.5, 76.4, 81.7, 87.3, 93.3, 99.8, 107, 114, 122, 130, 139, 149, 159, 170, 182, 194, 208, 222, 237, 254, 271, 290, 310, 332, 354, 379, 405]
-    EffAbs = [0.994, 0.989, 0.98, 0.963, 0.938, 0.903, 0.859, 0.807, 0.747, 0.684, 0.619, 0.556, 0.495, 0.439, 0.387, 0.34, 0.299, 0.263, 0.231, 0.203, 0.18, 0.159, 0.142, 0.127, 0.114, 0.103, 0.0937, 0.0856, 0.0787, 0.0726, 0.0674, 0.0628]
-
-    fig = figure(facecolor = 'palevioletred')                   # plot efficiency
-    ax = fig.add_subplot(111, frame_on = True, facecolor = 'palevioletred')
-    ax.plot(EffEnergy, EffAbs, linestyle = '-', color = 'black', marker = 'o', markersize = 8)
-    ax.set_xlim(0, 410)
-    ax.set_ylim(0, 1)
-    ax.set_xlabel('Energy (keV)', color = 'black')
-    ax.set_ylabel('Total Absorption', color = 'black')          # is this an accurate description?
-    ax.set_title('Scintillator Efficiency')
-    #show()
-    return(EffEnergy, EffAbs)
 
 #-----------------------------------------------------------------------------------
 
@@ -219,12 +197,28 @@ def LSpoly3(x, a, b, c, d):                                     # least-squares 
     return y
 
 #-----------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------
+
+EffEnergy = []
+EffAbs = []
+EffEnergy = [51.2, 54.7, 58.5, 62.5, 66.8, 71.5, 76.4, 81.7, 87.3, 93.3, 99.8, 107, 114, 122, 130, 139, 149, 159, 170, 182, 194, 208, 222, 237, 254, 271, 290, 310, 332, 354, 379, 405]
+EffAbs = [0.994, 0.989, 0.98, 0.963, 0.938, 0.903, 0.859, 0.807, 0.747, 0.684, 0.619, 0.556, 0.495, 0.439, 0.387, 0.34, 0.299, 0.263, 0.231, 0.203, 0.18, 0.159, 0.142, 0.127, 0.114, 0.103, 0.0937, 0.0856, 0.0787, 0.0726, 0.0674, 0.0628]
+    # SCINTILLATOR EFFICIENCY: probability that a photon will be completely absorbed.
+    # total attenuation 1000micron with 4mil Be window CdTe from Amptek website
+
+fig = figure(facecolor = 'palevioletred')                   # plot efficiency
+ax = fig.add_subplot(111, frame_on = True, facecolor = 'palevioletred')
+ax.plot(EffEnergy, EffAbs, linestyle = '-', color = 'black', marker = 'o', markersize = 8)
+ax.set_xlim(0, 410)
+ax.set_ylim(0, 1)
+ax.set_xlabel('Energy (keV)', color = 'black')
+ax.set_ylabel('Total Absorption', color = 'black')          # is this an accurate description?
+ax.set_title('Scintillator Efficiency')
+#show()
 
 xbgnames = []                                                   # empty list, to fill with .mca file names
 for filename in glob.glob('*.mca'):
     with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
-        (livetimes, xbgnDlines, xbgD) = ReadData(f.name)
+        livetimes, xbgnDlines, xbgD = ReadData(f.name)
         xbgnames.append(filename)
         GetxbgFile(filename, livetimes)
 print(xbgnames)
