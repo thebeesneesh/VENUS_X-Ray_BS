@@ -68,8 +68,10 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_ylim(0.01, 10)
     ax.set_xlabel('Energy (keV)', color = 'black')
     ax.set_ylabel('Counts/s', color = 'black')
-    ax.set_title(xbgname,'Calibrated X-Ray Spectrum')
-    show()
+    ax.set_title(xbgname + ' Calibrated X-Ray Spectrum')
+    #show()
+    img_name = os.path.splitext(xbgname)[0] + '.png'
+    plt.savefig(img_name) 
     
     print('Accounting for Efficiencies...')                     # correct for detector efficiencies           # if NO, will throw error on Spectral Temp calc                       
     parameters, covariance = curve_fit(LSpoly3, EffEnergy, EffAbs) # call Least-Squares 3rd-Order Polynomial Fit for Scintillator Efficiency function
@@ -92,7 +94,18 @@ def GetxbgFile(xbgname, livetime1):
         else:
             Effxrays = fit_a + fit_b*E[i] + fit_c*E[i]*E[i] + fit_d*E[i]*E[i]*E[i]
             Effxray.append(Effxrays)
+    #for i in range(len(E)):
+        #diffs = abs(Effxrays[i] - fit[i])
+        #diff.append(diffs)
     #print('Effxray:',Effxray)
+    #print(diff)
+
+    CorrectedxbgD = []
+    nE = []                                                 # number of counts * energy
+    for i in range(len(E)):
+        CorrectedxbgD.append(xbgD[i]/Effxray[i])            # correction applied (normalized data divided by fitted 3rd-order polynomial)
+        nE.append(CorrectedxbgD[i]*E[i])
+    #print(E[i], CorrectedxbgD[i], nE[i])   
 
     fig = figure(facecolor = 'lightpink')                   # efficiency plot
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'lightpink')
@@ -106,15 +119,9 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_title('Efficiency')
     ax.legend()
     #show()
+    plt.savefig('Efficiency')
 
-    CorrectedxbgD = []
-    nE = []                                                 # number of counts * energy
-    for i in range(len(E)):
-        CorrectedxbgD.append(xbgD[i]/Effxray[i])            # correction applied (normalized data divided by fitted 3rd-order polynomial)
-        nE.append(CorrectedxbgD[i]*E[i])
-    #print(E[i], CorrectedxbgD[i], nE[i])        
-
-    fig = figure(facecolor = 'darkseagreen')                        # efficiency plot
+    fig = figure(facecolor = 'darkseagreen')                        
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'white')
     ax.plot(E, xbgD, linestyle = '-', color = 'black', label = 'Original')
     ax.plot(E, CorrectedxbgD, linestyle = '-', color = 'lightcoral', label = 'Corrected')
@@ -125,6 +132,7 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_title(xbgname)
     ax.legend()
     show()
+    plt.savefig('Og vs Corrected')      # this isn't working?
 
     writename = "Corrected" + xbgname                       # create output file
     wr = open(writename, 'w')
@@ -214,11 +222,12 @@ ax.set_xlabel('Energy (keV)', color = 'black')
 ax.set_ylabel('Total Absorption', color = 'black')          # is this an accurate description?
 ax.set_title('Scintillator Efficiency')
 #show()
+plt.savefig('Scintillator Efficiency')
 
 xbgnames = []                                                   # empty list, to fill with .mca file names
 for filename in glob.glob('*.mca'):
     with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
-        livetimes, xbgnDlines, xbgD = ReadData(f.name)
+        (livetimes, xbgnDlines, xbgD) = ReadData(f.name)
         xbgnames.append(filename)
         GetxbgFile(filename, livetimes)
 print(xbgnames)
