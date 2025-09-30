@@ -71,9 +71,10 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_title(xbgname + ' Calibrated X-Ray Spectrum')
     #show()
     img_name = os.path.splitext(xbgname)[0] + '.png'
-    plt.savefig(img_name) 
+    plt.savefig(img_name)
+    plt.close(fig)
     
-    print('Accounting for Efficiencies...')                     # correct for detector efficiencies           # if NO, will throw error on Spectral Temp calc                       
+    #print('Accounting for Efficiencies...')                     # correct for detector efficiencies           # if NO, will throw error on Spectral Temp calc                       
     parameters, covariance = curve_fit(LSpoly3, EffEnergy, EffAbs) # call Least-Squares 3rd-Order Polynomial Fit for Scintillator Efficiency function
     fit_a = parameters[0]
     fit_b = parameters[1]
@@ -120,6 +121,7 @@ def GetxbgFile(xbgname, livetime1):
     ax.legend()
     #show()
     plt.savefig('Efficiency')
+    plt.close(fig)
 
     fig = figure(facecolor = 'darkseagreen')                        
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'white')
@@ -131,14 +133,8 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_ylabel('Counts/s', color = 'black')
     ax.set_title(xbgname)
     ax.legend()
-    show()
-    plt.savefig('Og vs Corrected')      # this isn't working?
-
-    writename = "Corrected" + xbgname                       # create output file
-    wr = open(writename, 'w')
-    for i in range(len(E)):
-        wr.write("%f %f %f %f\n"%(E[i], xbgD[i], CorrectedxbgD[i], nE[i])) # %f is replaced with the arguments
-    wr.write("\n")
+    plt.savefig('Og vs Corrected')
+    plt.close(fig)
 
     f, (ax1, ax2, ax3) = plt.subplots(3, sharex = True, sharey = False, facecolor = 'darkseagreen') # nE vs. E
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'white')
@@ -162,9 +158,11 @@ def GetxbgFile(xbgname, livetime1):
     ax1.set_title(xbgname)
     #show()
 
-    print('Calculating Spectral Temperature...')
-    beginE = float(input("Enter beginning Energy (keV): "))
-    endE = float(input("Enter ending Energy (keV): "))
+    #print('Calculating Spectral Temperature...')
+    #beginE = float(input("Enter beginning Energy (keV): "))        # get it to select range based on linear portion
+    #endE = float(input("Enter ending Energy (keV): "))
+    beginE = 40
+    endE = 75
     for i in range(len(E)):
         if beginE < E[i]:
             beginlocation = i
@@ -185,18 +183,20 @@ def GetxbgFile(xbgname, livetime1):
 
     result = linregress(TempE, TempxD)                          # use a linear fit to get the slope for the spectral temperature
     specT = abs(1.0 / result.slope)
-    print('a =', result.intercept, 'b =', result.slope, 'Ts =', specT, 'error =', result.intercept_stderr)
+    #print('a =', result.intercept, 'b =', result.slope, 'Ts =', specT, 'error =', result.intercept_stderr)
 
-    stdDev = np.sqrt(SumCounts/livetimes)
+    writename = "Corrected" + xbgname                       # create output file
+    wr = open(writename, 'w')
+    for i in range(len(E)):
+        wr.write("%f %f %f %f\n"%(E[i], xbgD[i], CorrectedxbgD[i], nE[i])) # %f is replaced with the arguments
+    wr.write("\n")
+
+    stdDev = np.sqrt(SumCounts/livetimes) # never used! do errors!!!
     #print('Ts = ', specT)
-    wr.write("Ts ")
-    wr.write("%f \n"%(specT))
-    wr.write("\n")
-    print('Sum of Counts in Range', SumCounts, '+/-', stdDev)
-    wr.write("Sum in Range ")
-    wr.write("%f \n"%(SumCounts))
-    wr.write("\n")
-    return()
+    with open("Spectral Temps.txt", "a") as data:
+        data.write("%f %f\n" %(specT, SumCounts))
+    #print('Sum of Counts in Range', SumCounts, '+/-', stdDev)
+    return(specT)
 
 #-----------------------------------------------------------------------------------
 
@@ -225,9 +225,12 @@ ax.set_title('Scintillator Efficiency')
 plt.savefig('Scintillator Efficiency')
 
 xbgnames = []                                                   # empty list, to fill with .mca file names
+specTemps = []
 for filename in glob.glob('*.mca'):
     with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
         (livetimes, xbgnDlines, xbgD) = ReadData(f.name)
         xbgnames.append(filename)
-        GetxbgFile(filename, livetimes)
-print(xbgnames)
+        (specTemp) = GetxbgFile(filename, livetimes)
+        specTemps.append(specTemp)
+
+print(xbgnames, specTemps)
