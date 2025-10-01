@@ -45,6 +45,8 @@ def ReadData(name):                                             # read value of 
 
 # Function to open, normalize, calibrate, correct for detector efficiency,  X-Ray & Background Data
 def GetxbgFile(xbgname, livetime1):
+    img_name = os.path.splitext(xbgname)[0]
+
     for i in range(xbgnDlines):                                 # divide data by livetime, now in counts/s (normalized)
         xbgD[i] = xbgD[i] / livetime1                           # nDlines should always equal 1024
         if xbgD[i] <= 0:
@@ -68,59 +70,57 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_ylim(0.01, 10)
     ax.set_xlabel('Energy (keV)', color = 'black')
     ax.set_ylabel('Counts/s', color = 'black')
-    ax.set_title(xbgname + ' Calibrated X-Ray Spectrum')
+    ax.set_title(img_name + ' Calibrated X-Ray Spectrum')
     #show()
-    img_name = os.path.splitext(xbgname)[0] + '.png'
-    plt.savefig(img_name)
+    plt.savefig(img_name + '.png')
     plt.close(fig)
     
     #print('Accounting for Efficiencies...')                     # correct for detector efficiencies           # if NO, will throw error on Spectral Temp calc                       
-    parameters, covariance = curve_fit(LSpoly3, EffEnergy, EffAbs) # call Least-Squares 3rd-Order Polynomial Fit for Scintillator Efficiency function
+    (parameters, covariance) = curve_fit(LSpoly3, EffEnergy, EffAbs) # call Least-Squares 3rd-Order Polynomial Fit for Scintillator Efficiency function
     fit_a = parameters[0]
     fit_b = parameters[1]
     fit_c = parameters[2]
     fit_d = parameters[3]
     #print('a, b, c, d = ', fit_a, fit_b, fit_c, fit_d)
 
-    fit = []                                                    # y = a + bx + cx^2 + dx^3
-    Effxray = []                                                # this fits a 3rd-order polynomial to the efficiency curve (could try higher-order or spline fit)
-    diff = []
+    fits = []                                                    # y = a + bx + cx^2 + dx^3
+    Effxrays = []                                                # this fits a 3rd-order polynomial to the efficiency curve (could try higher-order or spline fit)
+    diffs = []
     for i in range(len(EffEnergy)):
-        fits = fit_a + fit_b*EffEnergy[i] + fit_c*EffEnergy[i]*EffEnergy[i] + fit_d*EffEnergy[i]*EffEnergy[i]*EffEnergy[i]
-        fit.append(fits)
+        fit = fit_a + fit_b*EffEnergy[i] + fit_c*EffEnergy[i]*EffEnergy[i] + fit_d*EffEnergy[i]*EffEnergy[i]*EffEnergy[i]
+        fits.append(fit)
     for i in range(len(E)):                                     # E is the detector efficiency-corrected energies for each dataset
         if E[i] < 50 and E[i] > 10:                             # for 10 < E < 50 MeV, efficiency is 100%
-            Effxrays = 1.0
-            Effxray.append(Effxrays)
+            Effxray = 1.0
+            Effxrays.append(Effxray)
         else:
-            Effxrays = fit_a + fit_b*E[i] + fit_c*E[i]*E[i] + fit_d*E[i]*E[i]*E[i]
-            Effxray.append(Effxrays)
+            Effxray = fit_a + fit_b*E[i] + fit_c*E[i]*E[i] + fit_d*E[i]*E[i]*E[i]
+            Effxrays.append(Effxray)
     #for i in range(len(E)):
-        #diffs = abs(Effxrays[i] - fit[i])
-        #diff.append(diffs)
-    #print('Effxray:',Effxray)
-    #print(diff)
+        #diff = abs(Effxrays[i] - E[i])                         # should have been Effxrays - LSPoly 3rd Order Fit but it's 1024 vs 32 points so won't work
+        #diffs.append(diff)
+    #print(diffs)
 
     CorrectedxbgD = []
-    nE = []                                                 # number of counts * energy
+    nE = []                                                     # number of counts * energy
     for i in range(len(E)):
-        CorrectedxbgD.append(xbgD[i]/Effxray[i])            # correction applied (normalized data divided by fitted 3rd-order polynomial)
+        CorrectedxbgD.append(xbgD[i]/Effxrays[i])               # correction applied (normalized data divided by fitted 3rd-order polynomial)
         nE.append(CorrectedxbgD[i]*E[i])
     #print(E[i], CorrectedxbgD[i], nE[i])   
 
-    fig = figure(facecolor = 'lightpink')                   # efficiency plot
+    fig = figure(facecolor = 'lightpink')                       # efficiency plot
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'lightpink')
     ax.plot(EffEnergy, EffAbs, linestyle = '-', color = 'black', marker = 'o', markersize = 8, label = 'Scintillator Efficiency')
-    ax.plot(EffEnergy, fit, linestyle = '-', color = 'darkseagreen', marker = 'o', markersize = 8, label = 'Ideal LSPoly3rd Order Fit')
-    ax.plot(E, Effxray, linestyle = '-', color = 'white', marker = 'o', markersize = 5, label = 'Effective X-Ray Spectrum')     # is this right? in sensitive region (>50 keV)
+    ax.plot(EffEnergy, fits, linestyle = '-', color = 'darkseagreen', marker = 'o', markersize = 8, label = 'Ideal LSPoly3rd Order Fit')
+    ax.plot(E, Effxrays, linestyle = '-', color = 'white', marker = 'o', markersize = 5, label = 'Effective X-Ray Spectrum')     # is this right? in sensitive region (>50 keV)
     ax.set_xlim(0, 410)
     ax.set_ylim(0, 1)
     ax.set_xlabel('Energy (keV)', color = 'black')
     ax.set_ylabel('Total Absorption', color = 'black')
-    ax.set_title('Efficiency')
+    ax.set_title(img_name + 'Efficiency')
     ax.legend()
     #show()
-    plt.savefig('Efficiency')
+    plt.savefig(img_name + 'Efficiency')
     plt.close(fig)
 
     fig = figure(facecolor = 'darkseagreen')                        
@@ -133,8 +133,20 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_ylabel('Counts/s', color = 'black')
     ax.set_title(xbgname)
     ax.legend()
-    plt.savefig('Og vs Corrected')
+    plt.savefig(img_name + ' Original vs Corrected')
     plt.close(fig)
+
+    #fig = figure(facecolor = 'w')
+    #ax = fig.add_subplot(111, frame_on = True, facecolor = 'blue')
+    #ax.plot(E, diffs, linestyle = '-', marker = 'o', color = 'white')
+    #ax.set_xlim(0, max(E))
+    #ax.set_ylim(0.01, max(diffs))
+    #ax.set_xlabel('Energy (keV)', color = 'black')
+    #ax.set_ylabel('Counts/s', color = 'black')
+    #ax.set_title(img_name + ' Differences')
+    #show()
+    #plt.savefig('Diffs' + img_name)
+    #plt.close(fig)
 
     f, (ax1, ax2, ax3) = plt.subplots(3, sharex = True, sharey = False, facecolor = 'darkseagreen') # nE vs. E
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'white')
@@ -155,7 +167,7 @@ def GetxbgFile(xbgname, livetime1):
     ax1.legend()
     ax2.legend()
     ax3.legend()
-    ax1.set_title(xbgname)
+    ax1.set_title(img_name)
     #show()
 
     #print('Calculating Spectral Temperature...')
@@ -185,16 +197,16 @@ def GetxbgFile(xbgname, livetime1):
     specT = abs(1.0 / result.slope)
     #print('a =', result.intercept, 'b =', result.slope, 'Ts =', specT, 'error =', result.intercept_stderr)
 
-    writename = "Corrected" + xbgname                       # create output file
-    wr = open(writename, 'w')
-    for i in range(len(E)):
-        wr.write("%f %f %f %f\n"%(E[i], xbgD[i], CorrectedxbgD[i], nE[i])) # %f is replaced with the arguments
-    wr.write("\n")
+    writename = "Corrected" + xbgname                           # create output file
+    with open(writename, "w") as f:
+        f.write("Energy, xbgD, CorrectedxbgD, nE\n")
+        for i in range(len(E)):
+            f.write("%f %f %f %f\n"%(E[i], xbgD[i], CorrectedxbgD[i], nE[i])) # %f is replaced with the arguments
 
-    stdDev = np.sqrt(SumCounts/livetimes) # never used! do errors!!!
+    stdDev = np.sqrt(SumCounts/livetimes)                       # never used! do errors!!!
     #print('Ts = ', specT)
     with open("Spectral Temps.txt", "a") as data:
-        data.write("%f %f\n" %(specT, SumCounts))
+        data.write(f"{img_name}, {specT}, {SumCounts}\n")
     #print('Sum of Counts in Range', SumCounts, '+/-', stdDev)
     return(specT)
 
@@ -226,11 +238,14 @@ plt.savefig('Scintillator Efficiency')
 
 xbgnames = []                                                   # empty list, to fill with .mca file names
 specTemps = []
+with open("Spectral Temps.txt", "a") as data:
+    data.write("Run #, Spectral Temp, Sum Counts\n")
+
 for filename in glob.glob('*.mca'):
     with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
         (livetimes, xbgnDlines, xbgD) = ReadData(f.name)
         xbgnames.append(filename)
         (specTemp) = GetxbgFile(filename, livetimes)
-        specTemps.append(specTemp)
+        #specTemps.append(specTemp)
 
-print(xbgnames, specTemps)
+#print(xbgnames, specTemps)
