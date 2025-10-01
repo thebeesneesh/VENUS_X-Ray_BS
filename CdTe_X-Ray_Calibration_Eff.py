@@ -1,5 +1,6 @@
 import numpy as np
 import os, glob
+import datetime
 #from scipy.interpolate import CubicSpline
 from scipy.optimize import curve_fit
 from scipy.stats import linregress
@@ -205,7 +206,7 @@ def GetxbgFile(xbgname, livetime1):
 
     stdDev = np.sqrt(SumCounts/livetimes)                       # never used! do errors!!!
     #print('Ts = ', specT)
-    with open("Spectral Temps.txt", "a") as data:
+    with open("Spectral Temps" + datetime.now(), "a") as data:
         data.write(f"{img_name}, {specT}, {SumCounts}\n")
     #print('Sum of Counts in Range', SumCounts, '+/-', stdDev)
     return(specT)
