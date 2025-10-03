@@ -1,6 +1,7 @@
 import numpy as np
 import os, glob
-import datetime
+import csv
+#import datetime
 #from scipy.interpolate import CubicSpline
 from scipy.optimize import curve_fit
 from scipy.stats import linregress
@@ -72,9 +73,7 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_xlabel('Energy (keV)', color = 'black')
     ax.set_ylabel('Counts/s', color = 'black')
     ax.set_title(img_name + ' Calibrated X-Ray Spectrum')
-    #show()
     plt.savefig(img_name + '.png')
-    plt.close(fig)
     
     #print('Accounting for Efficiencies...')                     # correct for detector efficiencies           # if NO, will throw error on Spectral Temp calc                       
     (parameters, covariance) = curve_fit(LSpoly3, EffEnergy, EffAbs) # call Least-Squares 3rd-Order Polynomial Fit for Scintillator Efficiency function
@@ -120,9 +119,7 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_ylabel('Total Absorption', color = 'black')
     ax.set_title(img_name + 'Efficiency')
     ax.legend()
-    #show()
     plt.savefig(img_name + 'Efficiency')
-    plt.close(fig)
 
     fig = figure(facecolor = 'darkseagreen')                        
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'white')
@@ -135,7 +132,7 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_title(xbgname)
     ax.legend()
     plt.savefig(img_name + ' Original vs Corrected')
-    plt.close(fig)
+    #plt.show()
 
     #fig = figure(facecolor = 'w')
     #ax = fig.add_subplot(111, frame_on = True, facecolor = 'blue')
@@ -171,11 +168,13 @@ def GetxbgFile(xbgname, livetime1):
     ax1.set_title(img_name)
     #show()
 
+    plt.close('all')
+
     #print('Calculating Spectral Temperature...')
-    #beginE = float(input("Enter beginning Energy (keV): "))        # get it to select range based on linear portion
-    #endE = float(input("Enter ending Energy (keV): "))
-    beginE = 40
-    endE = 75
+    beginE = float(input("Enter beginning Energy (keV): "))        # get it to select range based on linear portion
+    endE = float(input("Enter ending Energy (keV): "))
+    #beginE = 40
+    #endE = 75
     for i in range(len(E)):
         if beginE < E[i]:
             beginlocation = i
@@ -200,16 +199,18 @@ def GetxbgFile(xbgname, livetime1):
 
     writename = "Corrected" + xbgname                           # create output file
     with open(writename, "w") as f:
-        f.write("Energy, xbgD, CorrectedxbgD, nE\n")
+        f.write("Energy xbgD    CorrectedxbgD   nE\n")
         for i in range(len(E)):
             f.write("%f %f %f %f\n"%(E[i], xbgD[i], CorrectedxbgD[i], nE[i])) # %f is replaced with the arguments
 
     stdDev = np.sqrt(SumCounts/livetimes)                       # never used! do errors!!!
     #print('Ts = ', specT)
-    with open("Spectral Temps" + datetime.now(), "a") as data:
-        data.write(f"{img_name}, {specT}, {SumCounts}\n")
+    writetofile = [img_name, specT, SumCounts, livetimes, fit_a, fit_b, fit_c, fit_d]
+    with open("Spectral Temps.csv", "a", newline = "") as data:
+        datawriter = csv.writer(data)
+        datawriter.writerow(writetofile)
     #print('Sum of Counts in Range', SumCounts, '+/-', stdDev)
-    return(specT)
+    return()
 
 #-----------------------------------------------------------------------------------
 
@@ -238,15 +239,13 @@ ax.set_title('Scintillator Efficiency')
 plt.savefig('Scintillator Efficiency')
 
 xbgnames = []                                                   # empty list, to fill with .mca file names
-specTemps = []
-with open("Spectral Temps.txt", "a") as data:
-    data.write("Run #, Spectral Temp, Sum Counts\n")
+header = ["Run #", "Spectral Temp", "Sum Counts", "Livetimes", "Coeff A", "Coeff B", "Coeff C", "Coeff D"]
+with open("Spectral Temps.csv", "w", newline = "") as data:
+    datawriter = csv.writer(data)
+    datawriter.writerow(header)
 
 for filename in glob.glob('*.mca'):
     with open(os.path.join(os.getcwd(), filename), 'r') as f:   # open in read-only mode
         (livetimes, xbgnDlines, xbgD) = ReadData(f.name)
         xbgnames.append(filename)
-        (specTemp) = GetxbgFile(filename, livetimes)
-        #specTemps.append(specTemp)
-
-#print(xbgnames, specTemps)
+        GetxbgFile(filename, livetimes)
