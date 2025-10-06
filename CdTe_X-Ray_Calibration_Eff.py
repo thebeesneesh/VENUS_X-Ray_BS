@@ -132,7 +132,7 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_title(xbgname)
     ax.legend()
     plt.savefig(img_name + ' Original vs Corrected')
-    #plt.show()
+    plt.show()
 
     #fig = figure(facecolor = 'w')
     #ax = fig.add_subplot(111, frame_on = True, facecolor = 'blue')
