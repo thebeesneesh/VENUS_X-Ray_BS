@@ -195,6 +195,11 @@ def GetxbgFile(xbgname, livetime1):
 
     result = linregress(TempE, TempxD)                          # use a linear fit to get the slope for the spectral temperature
     specT = abs(1.0 / result.slope)
+    # calculate error on slope (get error on slope)
+    slope_error = result.stderr
+    specT_error = slope_error # CHECK!!!!!!!!!!!!!!!!!
+    # calculate error on spectT
+
     #print('a =', result.intercept, 'b =', result.slope, 'Ts =', specT, 'error =', result.intercept_stderr)
 
     writename = "Corrected" + xbgname                           # create output file
@@ -205,11 +210,29 @@ def GetxbgFile(xbgname, livetime1):
 
     stdDev = np.sqrt(SumCounts/livetimes)                       # never used! do errors!!!
     #print('Ts = ', specT)
-    writetofile = [img_name, specT, SumCounts, livetimes, fit_a, fit_b, fit_c, fit_d]
+    writetofile = [img_name, specT, specT_error, SumCounts, livetimes, fit_a, fit_b, fit_c, fit_d]
     with open("Spectral Temps.csv", "a", newline = "") as data:
         datawriter = csv.writer(data)
         datawriter.writerow(writetofile)
     #print('Sum of Counts in Range', SumCounts, '+/-', stdDev)
+
+
+    # Construct fit line and do a qquick plot check
+    def linear(x, m, c):
+        return m*x + c
+    fig = figure(facecolor = 'w')                               # plot normalized and calibrated x-ray spectrum 
+    ax = fig.add_subplot(111, frame_on = True, facecolor = 'darkseagreen')
+    #ax.step(E, xbgD, where = 'pre', color = 'k')
+    ax.semilogy(E, xbgD, linestyle = '-', color = 'black')
+    ax.plot(E, linear(E,result.slope,result.intercept))
+    ax.set_xlim(0, 300)
+    ax.set_ylim(0.01, 10)
+    ax.set_xlabel('Energy (keV)', color = 'black')
+    ax.set_ylabel('Counts/s', color = 'black')
+    ax.set_title(img_name + ' Calibrated X-Ray Spectrum w fit')    
+    plt.plot()
+    plt.close()
+    
     return()
 
 #-----------------------------------------------------------------------------------
@@ -239,7 +262,7 @@ ax.set_title('Scintillator Efficiency')
 plt.savefig('Scintillator Efficiency')
 
 xbgnames = []                                                   # empty list, to fill with .mca file names
-header = ["Run #", "Spectral Temp", "Sum Counts", "Livetimes", "Coeff A", "Coeff B", "Coeff C", "Coeff D"]
+header = ["Run #", "Spectral Temp", "Error", "Sum Counts", "Livetimes", "Coeff A", "Coeff B", "Coeff C", "Coeff D"]
 with open("Spectral Temps.csv", "w", newline = "") as data:
     datawriter = csv.writer(data)
     datawriter.writerow(header)
