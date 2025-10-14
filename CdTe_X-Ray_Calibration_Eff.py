@@ -132,7 +132,7 @@ def GetxbgFile(xbgname, livetime1):
     ax.set_title(xbgname)
     ax.legend()
     plt.savefig(img_name + ' Original vs Corrected')
-    plt.show()
+    #plt.show()
 
     #fig = figure(facecolor = 'w')
     #ax = fig.add_subplot(111, frame_on = True, facecolor = 'blue')
@@ -171,10 +171,10 @@ def GetxbgFile(xbgname, livetime1):
     plt.close('all')
 
     #print('Calculating Spectral Temperature...')
-    beginE = float(input("Enter beginning Energy (keV): "))        # get it to select range based on linear portion
-    endE = float(input("Enter ending Energy (keV): "))
-    #beginE = 40
-    #endE = 75
+    #beginE = float(input("Enter beginning Energy (keV): "))        # get it to select range based on linear portion
+    #endE = float(input("Enter ending Energy (keV): "))
+    beginE = 40
+    endE = 100
     for i in range(len(E)):
         if beginE < E[i]:
             beginlocation = i
@@ -197,7 +197,7 @@ def GetxbgFile(xbgname, livetime1):
     specT = abs(1.0 / result.slope)
     # calculate error on slope (get error on slope)
     slope_error = result.stderr
-    specT_error = slope_error # CHECK!!!!!!!!!!!!!!!!!
+    specT_error = slope_error / (result.slope)**2 # CHECK!!!!!!!!!!!!!!!!!
     # calculate error on spectT
 
     #print('a =', result.intercept, 'b =', result.slope, 'Ts =', specT, 'error =', result.intercept_stderr)
@@ -224,13 +224,15 @@ def GetxbgFile(xbgname, livetime1):
     ax = fig.add_subplot(111, frame_on = True, facecolor = 'darkseagreen')
     #ax.step(E, xbgD, where = 'pre', color = 'k')
     ax.semilogy(E, xbgD, linestyle = '-', color = 'black')
-    ax.plot(E, linear(E,result.slope,result.intercept))
-    ax.set_xlim(0, 300)
-    ax.set_ylim(0.01, 10)
+    ax.plot(TempE, np.exp(linear(np.array(TempE),result.slope,result.intercept)), label='fit', lw=2, color='red')
+    ax.set_xlim(0, 100)
+    ax.set_ylim(0.001, 1)
     ax.set_xlabel('Energy (keV)', color = 'black')
     ax.set_ylabel('Counts/s', color = 'black')
     ax.set_title(img_name + ' Calibrated X-Ray Spectrum w fit')    
-    plt.plot()
+    plt.legend()
+    plt.savefig(img_name + ' with Fit')
+    plt.show()
     plt.close()
     
     return()
