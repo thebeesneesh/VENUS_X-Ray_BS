@@ -54,7 +54,7 @@ def GetxbgFile(xbgname, livetime1):
         if xbgD[i] <= 0:
             xbgD[i] = 0.0001
 
-    aCal = 0.16594626                                           # CHECK GAIN
+    aCal = 0.16594626                                           # CHECK GAIN AND CHECK CALIBRATION
     bCal = -0.4991754892        
     #print('Energy Calibration = ' +  str(aCal) + '*Channel + ' + str(bCal))
 
