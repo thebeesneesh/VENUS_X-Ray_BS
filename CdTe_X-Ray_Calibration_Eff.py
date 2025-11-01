@@ -35,7 +35,7 @@ def ReadData(name):                                             # read value of 
     D = []                                                      # raw data list
     for i in range(nDlines):
         Ds = f.readline().split()                               # starts reading lines again at the beginning of the data
-        if Ds[0] == '<<END>>':
+        if Ds[0] == '<<END>>': 
             endpoint = i                                        # end of data ('<<END>>')
             break
         D.append(int(Ds[0]))                                    # turns bin data into list
@@ -54,8 +54,8 @@ def GetxbgFile(xbgname, livetime1):
         if xbgD[i] <= 0:
             xbgD[i] = 0.0001
 
-    aCal = 0.16594626                                           # CHECK GAIN AND CHECK CALIBRATION
-    bCal = -0.4991754892        
+    aCal = 0.3207                                           # CHECK GAIN AND CHECK CALIBRATION
+    bCal = -0.1591        
     #print('Energy Calibration = ' +  str(aCal) + '*Channel + ' + str(bCal))
 
     E = []                                                      # list for calibrated energy spectrum
@@ -173,8 +173,8 @@ def GetxbgFile(xbgname, livetime1):
     #print('Calculating Spectral Temperature...')
     #beginE = float(input("Enter beginning Energy (keV): "))        # get it to select range based on linear portion
     #endE = float(input("Enter ending Energy (keV): "))
-    beginE = 40
-    endE = 100
+    beginE = 80
+    endE = 200
     for i in range(len(E)):
         if beginE < E[i]:
             beginlocation = i
