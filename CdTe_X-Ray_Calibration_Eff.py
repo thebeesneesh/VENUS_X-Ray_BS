@@ -186,7 +186,7 @@ def GetxbgFile(xbgname, livetime1):
 
     TempxD = []
     TempE = []
-    SumCounts = 0.
+    SumCounts = 0.              # integrated number of efficiency-corrected counts in selected energy range as a RATE (counts/s); also computes Poisson-like statistical errors
     for i in range(beginlocation, endlocation):
         #print(E[i], xbgD[i], CorrectedxbgD[i], np.log(CorrectedxbgD[i]))
         TempxD.append(np.log(CorrectedxbgD[i]))
@@ -216,6 +216,7 @@ def GetxbgFile(xbgname, livetime1):
         datawriter.writerow(writetofile)
     #print('Sum of Counts in Range', SumCounts, '+/-', stdDev)
 
+    
 
     # Construct fit line and do a qquick plot check
     def linear(x, m, c):
@@ -264,7 +265,7 @@ ax.set_title('Scintillator Efficiency')
 plt.savefig('Scintillator Efficiency')
 
 xbgnames = []                                                   # empty list, to fill with .mca file names
-header = ["Run #", "Spectral Temp", "Error", "Sum Counts", "Livetimes", "Coeff A", "Coeff B", "Coeff C", "Coeff D"]
+header = ["Run", "Ts", "Error", "Sum Counts", "Livetimes", "Coeff A", "Coeff B", "Coeff C", "Coeff D"]
 with open("Spectral Temps.csv", "w", newline = "") as data:
     datawriter = csv.writer(data)
     datawriter.writerow(header)
