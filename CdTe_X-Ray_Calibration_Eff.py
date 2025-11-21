@@ -171,7 +171,7 @@ def GetxbgFile(xbgname, livetime1):
     plt.close('all')
 
     #print('Calculating Spectral Temperature...')
-    #beginE = float(input("Enter beginning Energy (keV): "))        # get it to select range based on linear portion
+    #beginE = float(input("Enter beginning Energy (keV): "))    # get it to select range based on linear portion
     #endE = float(input("Enter ending Energy (keV): "))
     beginE = 80
     endE = 200
@@ -186,7 +186,7 @@ def GetxbgFile(xbgname, livetime1):
 
     TempxD = []
     TempE = []
-    SumCounts = 0.              # integrated number of efficiency-corrected counts in selected energy range as a RATE (counts/s); also computes Poisson-like statistical errors
+    SumCounts = 0.                                              # integrated number of efficiency-corrected counts in selected energy range as a RATE (counts/s); also computes Poisson-like statistical errors
     for i in range(beginlocation, endlocation):
         #print(E[i], xbgD[i], CorrectedxbgD[i], np.log(CorrectedxbgD[i]))
         TempxD.append(np.log(CorrectedxbgD[i]))
