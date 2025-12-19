@@ -1,0 +1,20 @@
+{
+  "rando": {
+    "source_to_col1": 2000.0,
+    "col1_length": 107.0,
+    "col1_radius": 18.132867132867133,
+    "col1_to_col2": 432.3076923076923,
+    "col2_length": 168.77622377622376,
+    "col2_radius": 11.27972027972028,
+    "col2_to_target": 150.48951048951048
+  },
+  "janilee": {
+    "source_to_col1": 2000.0,
+    "col1_length": 103.0,
+    "col1_radius": 9.0,
+    "col1_to_col2": 130.4,
+    "col2_length": 128.6,
+    "col2_radius": 3.0,
+    "col2_to_target": 67.0
+  }
+}
