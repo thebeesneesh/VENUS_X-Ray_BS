@@ -48,46 +48,46 @@ title_date = datetime.fromtimestamp(first_timestamp).strftime('%d %b %Y %H:%M')
 peaks, _ = find_peaks(y, prominence=0.000001)
 
 # Find valleys (local minima) for peak boundaries
-valleys, _ = find_peaks(-y)
-valleys = np.concatenate([[0], valleys, [len(y)-1]])
+#valleys, _ = find_peaks(-y)
+#valleys = np.concatenate([[0], valleys, [len(y)-1]])
 
 # Calculate area under each peak
 peak_data = []
 
 for peak_idx in peaks:
     # Find valleys on either side of peak
-    left_valleys = valleys[valleys < peak_idx]
-    right_valleys = valleys[valleys > peak_idx]
+    #left_valleys = valleys[valleys < peak_idx]
+    #right_valleys = valleys[valleys > peak_idx]
     
-    left_bound = left_valleys[-1] if len(left_valleys) > 0 else 0
-    right_bound = right_valleys[0] if len(right_valleys) > 0 else len(y) - 1
+    #left_bound = left_valleys[-1] if len(left_valleys) > 0 else 0
+    #right_bound = right_valleys[0] if len(right_valleys) > 0 else len(y) - 1
     
     # Calculate area using trapezoidal integration
-    peak_x = x[left_bound:right_bound+1]
-    peak_y = y[left_bound:right_bound+1]
-    area = np.trapezoid(peak_y, peak_x)
+    #peak_x = x[left_bound:right_bound+1]
+    #peak_y = y[left_bound:right_bound+1]
+    #area = np.trapezoid(peak_y, peak_x)
     
     peak_data.append({
         'beam_at_peak': y[peak_idx],
         'batman_at_peak': x[peak_idx],
-        'area': area
+        #'area': area
     })
 
 # Save to text file
-with open('peak_areas.txt', 'w') as f:
-    f.write('BATMAN_Current_at_Peak(A)\tArea\n')
+with open('peaks.txt', 'w') as f:
+    f.write('BATMAN_Current_at_Peak(A) \t Beam_Current_at_Peak(µA) \n')
     for p in peak_data:
-        f.write(f"{p['batman_at_peak']}\t{p['area']}\n")
+        f.write(f"{p['batman_at_peak']}\t{p['beam_at_peak']}\n")
 
-print(f"Found {len(peaks)} peaks. Results saved to peak_areas.txt")
+print(f"Found {len(peaks)} peaks. Results saved to peaks.txt")
 
 # Create the plot with peaks marked
 plt.figure(figsize=(10, 6))
 plt.plot(x, y, 'b.-', label='Data')
 plt.plot(x[peaks], y[peaks], 'ro', markersize=8, label='Peaks')
 
-plt.xlabel('Beam Current (µA)')
-plt.ylabel('BATMAN Current (A)')
+plt.xlabel('BATMAN Current (A)')
+plt.ylabel('Beam Current (µA)')
 plt.title(title_date)
 plt.legend()
 

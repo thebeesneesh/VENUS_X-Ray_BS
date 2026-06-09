@@ -7,8 +7,8 @@ import os
 class XRayCollimatorGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("X-Ray Beam Collimator Calculator")
-        self.root.geometry("900x820")
+        self.root.title("X-Ray Collimator Calculator")
+        self.root.geometry("1000x820")
         
         self.config_file = "collimator_configs.json"
         self.saved_configs = self.load_configs_from_file()
@@ -43,7 +43,7 @@ class XRayCollimatorGUI:
         
         # Parameters
         self.params = {
-            'source_to_col1': {'value': 300, 'min': 10, 'max': 2000, 'label': 'X-ray Source to Collimator 2 (mm)'},
+            'source_to_col1': {'value': 300, 'min': 10, 'max': 2000, 'label': 'Extraction to Collimator 2 (mm)'},
             'col1_length': {'value': 50, 'min': 10, 'max': 200, 'label': 'Collimator 2 Length (mm)'},
             'col1_radius': {'value': 5, 'min': 1, 'max': 50, 'label': 'Collimator 2 Radius (mm)'},
             'col1_to_col2': {'value': 200, 'min': 10, 'max': 1000, 'label': 'Distance Col2 to Col1 (mm)'},
