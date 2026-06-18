@@ -1,0 +1,1313 @@
+# 06/15/25: Updated with CODEX to Python 3
+# 06/02/08: Cleaning
+#           Does not use the total absolute efficiency for NaI
+# 12/12/07: Updated, Most Current version; Includes choice of w/ or w/o efficiencies
+# 09/26/07: Selected only positive energies for matrix
+# 09/25/07: Added matrix inversion
+# 07/25/07: File to subtract XR from XR&BG and use resultant BG spectrum
+#           for calibration.
+import numpy as np
+from numpy import *
+from numpy.linalg import inv as inverse
+from numpy.linalg import det as determinant
+
+arrayrange = np.arange
+Float = float
+matrixmultiply = np.matmul
+from pylab import *
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+# Initialize variables, arrays, etc...
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+def checklivetime():
+    # request file names
+    xbgname=input("X-ray Plus Background file name: ")
+    xname=input("X-Ray file name: ")
+
+    names=[xbgname,xname]
+    livetime=zeros(len(names))
+    # check for normalization
+    for i in range(len(names)):
+        r=open(names[i], 'r')
+        print(names[i])
+        numlines=0
+        while r.readline(): numlines+=1
+        r.seek(0)
+        for j in range(numlines):
+            linea=r.readline().split()
+            if (linea[0]=='LIVE_TIME'):
+                livetime[i]=float(linea[2])
+                break
+        r.close()
+
+    multip1=float(600/livetime[0])
+    multip2=float(600/livetime[1])
+    print()
+    (xbgname, xname, xbgCH, xbgE, xD, E_for_MultFacFit, xDFinal2, xnDlines, axbgE, bxbgE, chi_squared_E, meanG, Epeaks,name)=GetxbgFile(xbgname, multip1, xname, multip2)
+    return(xbgname, xname, xbgCH, xbgE, xD,E_for_MultFacFit, xDFinal2, xnDlines, axbgE, bxbgE, chi_squared_E, meanG, Epeaks,name)
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+# Function to read the value of the Live Time, total # lines, return channels, counts
+def ReadData(name):
+    f=open(name, 'r')
+    nlines=0
+    while f.readline(): nlines+=1
+    f.seek(0)
+    for i in range(nlines):
+        line=f.readline().split()
+        if (line[0]=='<<DATA>>'):
+            Dlocation=i
+            nDlines=nlines-1-Dlocation-1
+            break
+
+    D=zeros(nDlines, dtype=float)
+    CH=arrayrange(nDlines)
+    for i in range(nDlines):
+        Ds=f.readline().split()
+        D[i]=int(Ds[0])
+    f.close()
+
+    return(CH, D, nDlines)
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+# Account for NaI efficiency with varying energy
+def eff(nRowsColumns,EndPointEnergy):
+    EndPointEnergy=float(EndPointEnergy)
+    nRowsColumns=float(nRowsColumns)
+
+    #----------------------------------------------------------
+    # SCINILLATOR EFFICIENCY: Probability that a photon will be completely absorbed.
+
+    # 3x3in from 1960 Nuclear Data Tables
+    Energy_Val=array((0., 100., 200., 300., 400., 500., 600., 700., 800., 900., 1000., 1100., 1200., 1300., 1400., 1500., 1600., 1700., 1800., 1900., 2000., 2100., 2200., 2300., 2400., 2500., 2600.), Float)
+    Peak_to_Tot_Val=array((1.0, 0.99, 0.92, 0.83, 0.735, 0.65, 0.59, 0.53, 0.49, 0.45, 0.42, 0.38, 0.37, 0.335, 0.32, 0.305, 0.295, 0.280, 0.275, 0.270, 0.260, 0.255, 0.245, 0.235, 0.230, 0.220, 0.215), Float)
+    
+    # 09/11/07: from experimental data, for source at edge of detector table w/o lead
+    Energy_Val_exp=array((0.0, 59.5, 569.7, 661.7, 1063.7, 1173.2), Float)
+    Peak_to_Tot_Val_exp=array((1.0, 0.76686, 0.381, 0.3691901, 0.185285, 0.181), Float)
+    
+    step=float(EndPointEnergy/nRowsColumns)
+    E=arrayrange(0,EndPointEnergy,step, Float)              # Empty array for Energy values of Peak-to-Totals from fit
+    Peak_To_Tot=zeros(len(E), 'd')                          # Empty array for Peak-to-Total values from fit
+    
+    # Call Least-Squares 3rd Order Polynomial Fit for Scintillator Efficiency
+    (a,b,c,d)=LeastSquaresPoly3(Energy_Val,Peak_to_Tot_Val)
+
+    #a=0.80                                                   # Coefficients to match experimental data to shape of published data
+    #b=-0.00089
+    #c=3.58E-07
+    #d=-4.85E-11
+
+
+    #----------------------------------------------------------
+    # TOTAL ABSOLUTE EFFICIENCY: Probability that a photon will be detected at all.
+
+    # 3x3in Total Absolute Efficiency Values from 1960 Nuclear Data Tables
+    Energy_Abs_Eff=array((0,100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000), Float)
+    Abs_Eff_Values=(1/.009)*array((.009, .009, .0084, .0078, .0072, .0068, .0064, .0062, .0060, .0058, .0056, .0055, .0054, .0052, .0051, .0050, .0049, .00485, .0048, .00475, .0047), Float)
+    Abs_Eff=zeros(len(E), 'd')                              # Empty array for Absolute Efficiency values 
+    
+    # Call Least-Squares 3rd Order Polynomial Fit for Scintillator Efficiency
+    (a_Abs_Eff, b_Abs_Eff, c_Abs_Eff, d_Abs_Eff)=LeastSquaresPoly3(Energy_Abs_Eff, Abs_Eff_Values)
+    
+    #----------------------------------------------------------
+
+    for i in range(0, len(E)):
+        Peak_To_Tot[i]=a+b*E[i]+c*E[i]*E[i]+d*E[i]*E[i]*E[i]
+        Abs_Eff[i]=a_Abs_Eff+b_Abs_Eff*E[i]+c_Abs_Eff*E[i]*E[i]+d_Abs_Eff*E[i]*E[i]*E[i]
+        if Peak_To_Tot[i]>1:
+            Peak_To_Tot[i]=1
+        if Abs_Eff[i]>1:
+            Abs_Eff[i]=1
+      
+    clf()
+    plot(E,Peak_To_Tot, 'b',Energy_Val, Peak_to_Tot_Val, 'r', lw=2)
+    
+    xlabel('Energy (keV)')
+    ylabel('P/T')
+    xlim(0,max(E))
+    ylim(min(Peak_To_Tot),1)
+    legend(('Fit', 'Published Values'))
+    title('Peak-to-Total Fits')
+   
+    #----------------------------------------------------------
+
+    return(E, Peak_To_Tot, Abs_Eff)
+
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+# Function to open X-Ray & Background Data
+def GetxbgFile(xbgname, multip1, xname, multip2):
+    writename="CAL" + xbgname[:-4] + "&" + xname[:-4]
+    print()
+    print('**Enter Background & X-Ray file information.**')
+    print()
+    (xbgCH, xbgD, xbgnDlines)=ReadData(xbgname)
+    (xCH, xD, xnDlines)=ReadData(xname) 
+    
+    for i in range(xbgnDlines):             # Data normalization to 600 seconds
+        xbgD[i]=1.0*multip1*xbgD[i]
+        if xbgD[i]<=0:
+            xbgD[i]=.0001
+    for i in range(xnDlines):
+        xD[i]=1.0*multip2*xD[i]
+        if xD[i]<=0:
+            xD[i]=.0001
+
+
+    #--------------------------------------------------------------------------
+    # Create output file
+    writename2="060208_MiscInfo"
+    wr2=open(writename2, 'w')
+    wr2.write("'Original Data:' \n")    
+    wr2.write("\n")
+    wr2.write("'xbgCH' 'xbgD' 'xD'\n")
+    for i in range(xbgnDlines):
+        wr2.write("%i %f %f \n"%(xbgCH[i], xbgD[i], xD[i]))
+    wr2.write("\n")
+
+    #--------------------------------------------------------------------------
+    
+    summation=0
+    numpeaks=2                                        # Number of peaks to use for calibration
+##    #numpeaks=int(input("Enter the amount of peaks for calibration:"))
+##    #for i in range(numpeaks):
+##        #Epeaks[i]=float(input("Enter the Energy of the peak:"))
+    Epeaks=zeros(numpeaks)
+    Epeaks=array([569.7, 1063.7])
+    numpeaks=len(Epeaks)
+    subtractStart1=zeros(len(Epeaks), dtype=int)                 # locations to subtract background & search for peaks:                          # There are two ranges per peak; one before and one after
+    subtractEnd1=zeros(len(Epeaks), dtype=int)
+    subtractStart2=zeros(len(Epeaks), dtype=int)
+    subtractEnd2=zeros(len(Epeaks), dtype=int)
+    aSubtract=zeros(len(Epeaks),'d')                  # Coefficients of fit to linear background
+    bSubtract=zeros(len(Epeaks),'d')
+    chi_squared_Subtract=zeros(len(Epeaks),'d')
+    meanG=zeros(len(Epeaks), 'd')
+
+##
+    #--------------------------------------------------------------------------
+    #---------------------------------------------------------------------
+    # SMOOTH X-Ray Data
+    
+    #xbgCH, xbgD, xbgnDlines, subtractStart1, subtractEnd1, subtractStart2, subtractEnd2=smoothdata(xbgnDlines, xbgD, xbgCH, Epeaks, subtractStart1, subtractEnd1, subtractStart2, subtractEnd2)
+    xbgCH, xbgD, xbgnDlines=smoothXdata(xbgnDlines, xbgD, xbgCH)
+
+    print('Number of data lines post-averaging:', xbgnDlines)
+    #-------------------------------------------------------------------------
+    
+    # SMOOTH XRBGData
+    xCH, xD, xnDlines=smoothXdata(xnDlines, xD, xCH)
+    
+    #--------------------------------------------------------------------------
+    
+    # Subtract XR from XR & BG to get BG; BG to be used for calibration
+    bgD=zeros(xbgnDlines, 'd')
+    bgCH=zeros(xbgnDlines, 'd')
+
+    for i in range(xbgnDlines):
+        bgD[i]=xbgD[i]-xD[i]
+        if bgD[i]<0:
+            bgD[i]=.0001
+        bgCH[i]=xbgCH[i]
+
+    print()
+    print('**Enter Background Subtraction from Source information.')
+    # Plot Background to select the ranges to make a linear fit and subtract
+    name=writename+"_IsotopeSpectrum"
+    clf()
+    plot(xbgCH,bgD,'b', lw=2)
+    xlabel('Channel')
+    ylabel('Counts')
+    xlim(min(xbgCH),max(xbgCH))
+    ylim(min(bgD),max(bgD)+(1./6.)*max(bgD))
+    text(min(xbgCH)+5,max(bgD), 'Select Background Ranges to Remove from Isotope Spectrum')
+    title('Isotope Spectrum')
+
+    # Background Subtraction Info to find peaks
+    
+    for i in range(len(Epeaks)):
+        subtractStart1[i]=int(input("Beginning CH before peak for linear fit:"))
+        subtractEnd1[i]=int(input("Ending CH before peak for linear fit:"))
+        subtractStart2[i]=int(input("Beginning CH after peak for linear fit:"))
+        subtractEnd2[i]=int(input("Ending CH after peak for linear fit:"))
+
+    #--------------------------------------------------------------------------  
+    # Least Squares fit to REMOVE BACKGROUND FROM ISOTOPE SPECTRUM   
+    for i in range(len(Epeaks)):
+        n=subtractEnd2[i]-subtractStart1[i]
+        
+        FitD1=bgD[subtractStart1[i]:subtractEnd1[i]]
+        FitD2=bgD[subtractStart2[i]:subtractEnd2[i]]
+        FitD=concatenate((FitD1,FitD2))
+        FitCH1=xbgCH[subtractStart1[i]:subtractEnd1[i]]
+        FitCH2=xbgCH[subtractStart2[i]:subtractEnd2[i]]
+        FitCH=concatenate((FitCH1,FitCH2))
+
+        # The fit to each peaks background returns fit coefficients a, b, and chi_squared value; y=a+bx
+        (aSubtract[i],bSubtract[i], chi_squared_Subtract[i])=LeastSquares(FitCH,FitD)
+        BGSubtractD=zeros(n,'d')
+        peakSearchStart=int(subtractStart1[i])
+        peakSearchEnd=int(subtractEnd2[i])
+        #SubtractedCH=CH[peakSearchStart:peakSearchEnd]
+        BGSubtractedD=zeros(n,'d')
+        N=int(peakSearchEnd-peakSearchStart)
+
+        # Subtract background from source
+        for j in range(peakSearchStart,peakSearchEnd,1):
+            BGSubtractD[j-peakSearchStart]=aSubtract[i]+bSubtract[i]*(j)
+            BGSubtractedD[j-peakSearchStart]=bgD[j]-BGSubtractD[j-peakSearchStart]
+            if BGSubtractedD[j-peakSearchStart]<1:
+                BGSubtractedD[j-peakSearchStart]=1
+          
+        #------------------------------------------------------------------------
+        # Want to find the highest count value, not the true peak. Will search around this highest count value for true peak. 
+    
+        peakset=zeros(subtractEnd2[i]-subtractStart1[i])
+        for x in range(subtractStart1[i], subtractEnd2[i],1):
+            peakset[x-subtractStart1[i]]=BGSubtractedD[x-peakSearchStart]
+
+        # Find the max count value in the peakset
+        peakcountval=max(peakset)
+        peakcountvalindex=argmax(peakset)
+        # The Value i where max count value occurs is peakcountvaltrueindex
+        peakcountvaltrueindex=peakcountvalindex+peakSearchStart
+        # The peakCH is the channel in the list AvgCH with the same index
+        initialpeakCH=xbgCH[peakcountvaltrueindex]
+
+    #---------------------------------------------------------------------
+        #Gaussian Fit
+        pts=10    # Changed from 20 to 10 after averaging
+        K=int(initialpeakCH+pts-(initialpeakCH-pts))
+        
+        GSubtractedD=zeros(K,'d')
+        logGSubtractedD=zeros(K,'d')
+        GCH=zeros(K,'d')
+        GFit=zeros(K,'d')
+        GGFit=zeros(K,'d')
+        c=zeros(K, 'd')
+        b=zeros(K, 'd')
+        f=zeros(K, 'd')
+        
+        for j in range(initialpeakCH-pts, initialpeakCH+pts,1):
+            GSubtractedD[j-(initialpeakCH-pts)]=BGSubtractedD[j-peakSearchStart]
+            logGSubtractedD[j-(initialpeakCH-pts)]=log(GSubtractedD[j-(initialpeakCH-pts)])
+            GCH[j-(initialpeakCH-pts)]=xbgCH[j]
+        aG, bG, cG=LeastSquaresPoly(GCH,logGSubtractedD)
+        sigmaSq=-1/(2*cG)
+        meanG[i]=bG*sigmaSq
+        logA=aG+(bG*bG)/(2*cG)
+        A=exp(aG+(meanG[i]*meanG[i])/(2*sigmaSq))
+      
+        #wr2.write("'CH' 'bgD' 'bgDpostSub' 'G-Fit' \n")
+        for j in range(initialpeakCH-pts, initialpeakCH+pts,1):
+            GFit[j-(initialpeakCH-pts)]=A*exp(-(bgCH[j]-meanG[i])*(bgCH[j]-meanG[i])/(2*sigmaSq))
+            c[j-(initialpeakCH-pts)]=xbgCH[j]
+            b[j-(initialpeakCH-pts)]=BGSubtractedD[j-peakSearchStart]
+            f[j-(initialpeakCH-pts)]=GFit[j-(initialpeakCH-pts)]    
+            #GGFit[j-(initialpeakCH-pts)]=exp(aG+bG*xbgCH[j]+cG*bgCH[j]*bgCH[j])
+            #wr2.write("%f %f %f %f \n"%(xbgCH[j], bgD[j], BGSubtractedD[j-peakSearchStart], GFit[j-(initialpeakCH-pts)]))
+        #wr2.write("\n")
+        clf()
+        plot(c, b, 'b', c, f,'c',lw=2)
+        title('Gaussian Peak Fits')
+        xlabel('Channel')
+        ylabel('Counts')
+        xlim(min(c), max(c))
+        ylim(min(b), max(b))
+        text((max(c)+min(c))/2.0, 30.0+(max(b)+min(b))/2.0, 'Max Count Channel:')
+        text((max(c)+min(c))/2.0, (max(b)+min(b))/2.0, str(meanG[i]))
+        legend(('Peak','Peak Fit'))
+    print(xnDlines)
+    #---------------------------------------------------------------------
+    # REMOVE COUNTS BELOW 10
+##    for i in range(100,0,-1):            # Throw out all data below ten counts
+##        if xD[i]<=10:
+##            Cutoff_Index1=i+1
+##            break
+    for i in range(100,xnDlines):        # Throw out all data below ten counts
+        if xD[i]<=10:
+            Cutoff_Index2=i
+            break
+    xD=xD[0:Cutoff_Index2]
+    xnDlines=len(xD)                     # New data length
+    print("xnDlines=", xnDlines)
+    #---------------------------------------------------------------------
+    print(meanG, Epeaks)
+    # CALIBRATION
+    xbgE=zeros(xnDlines,'d')
+    # Need to check chi-squared value
+    axbgE, bxbgE, chi_squared_E=LeastSquares(meanG, Epeaks)
+##    print "The Chi-Squared Value for the Energy Calibration is:", chi_squared_E
+    wr2.write("'Calibration Post-Averaging'\n")
+    wr2.write("'CH' 'E' 'xbgD' 'xD' 'bgD' \n")
+    for i in range(0, xnDlines,1):
+        xbgE[i]=axbgE+bxbgE*i
+        #wr2.write("%f %f %f %f %f\n" %(xbgCH[i], xbgE[i], xbgD[i], xD[i], bgD[i]))
+    wr2.write("\n")
+
+    name=writename+"_CalibratedSpectrum"
+    clf()
+    semilogy(xbgE,xD,'b',lw=2)
+    xlabel('Energy (keV)')
+    ylabel('Counts')
+    xlim(0,max(xbgE))
+    ylim(10,max(xD))
+    title('Calibrated Spectrum')
+    
+    #---------------------------------------------------------------------
+    print()
+    print("Account for Efficiencies?")
+    efficiency_decision=str(input("Enter yes, no."))
+##    if efficiency_decision!='yes' or 'no':
+##        efficiency_decision=str(input("Enter yes, no."))
+    if efficiency_decision=='yes':
+                                     
+        # Create [1xX] data array, only positive energies
+    ##    print
+    ##    EndPointEnergy=int(input("**Enter ending Energy for Efficiency Process:"))
+
+        # Find the index where positive energy values begin in order to use for matrix
+##        for i in range(len(xbgE)):
+##            if xbgE[i]>=1.0:
+##                endIndex=float(i)                                  # The index to start collecting energies for matrix
+##                break
+         # Find the index corresponding to the energy at which to end Efficiency Process
+    ##    for i in range(len(xbgE)):
+    ##         if xbgE[i]>=EndPointEnergy:
+    ##             endIndex2=i
+    ##             break
+##         
+##        endIndex2=float(xnDlines)
+##        EndPointEnergy=xbgE[xnDlines-1]                      # To be passed on to Efficiency function
+##
+##        nRowsColumns_input=endIndex2-endIndex
+##        if nRowsColumns_input<100:
+##            nRowsColumns=nRowsColumns_input
+##        else:
+##            nRowsColumns=100                                 # Number of rows and columns for matrix
+##
+##
+        if xnDlines<100:
+            nRowsColumns=xnDlines
+        else:
+            nRowsColumns=100
+            
+        # Select points for matrix inversion
+        D_matrix=zeros((1,nRowsColumns), 'd')                # Data points to be used for matrix in matrix form [1x100]
+        CH_for_matrix=zeros(nRowsColumns, 'd')               # Channels corresponding to those points in matrix form [1x100]
+        E_for_matrix=zeros(nRowsColumns,'d')                 # Energies corresponding to those points
+        D_for_matrix=zeros(D_matrix.shape[1],'d')            # Empty array to place matrix data in     
+        Ece_for_matrix=zeros(nRowsColumns,'d')
+        CH_for_ce=zeros(nRowsColumns,'d')
+
+        print(nRowsColumns)
+        step=float(xnDlines)/float(nRowsColumns)
+        # Pulling out data points at intervals of step and the data point's corresponding energies to be used for matrix
+        #step=int(round((xnDlines)/nRowsColumns))
+        print('step=', step, 'step*nRowsColumns=', step*nRowsColumns)
+        for k in range(nRowsColumns):
+            i = int(round(k * step))
+            if i >= xnDlines:
+                i = xnDlines - 1
+            D_matrix[0][k]=xD[i]             # Data for matrix taken at each step
+            if D_matrix[0][k]<0:             # Data check
+                D_matrix[0][k]=0.001
+            CH_for_matrix[k]=xCH[i]          # Channel corresponding to matrix data  
+            E_for_matrix[k]=xbgE[i]          # Energy correspondng to matrix data   
+            Ece_for_matrix[k]=(1.0*E_for_matrix[k]/(1.+511./(2.*E_for_matrix[k])))
+
+        # Find the position in matrix where compton edge should be placed
+        for i in range(len(E_for_matrix)):
+            for j in range(len(E_for_matrix)-1):
+               if Ece_for_matrix[i]>E_for_matrix[j] and Ece_for_matrix[i]<=E_for_matrix[j+1]:
+                    CH_for_ce[i]=j
+          
+        for i in range(nRowsColumns):                        # Take selected data points out of matrix form:
+            D_for_matrix[i]=D_matrix[0][i]
+
+        #---------------------------------------------------------------------
+        # Call Peak-to-Total and Absolute Efficiency curve for 3x3 NaI Crystal Scintillator
+        EndPointEnergy=xbgE[Cutoff_Index2-1]
+        (Energy_PT, Peak_To_Tot, Abs_Eff)=eff(nRowsColumns, EndPointEnergy)
+            
+        Peak_Tot_2=spline(Energy_PT,Peak_To_Tot)
+        P_T_2=zeros(nRowsColumns, 'd')                                           # Empty array for Peak-to-Total Values at requested Energy Values
+
+        Abs_Eff_2=spline(Energy_PT, Abs_Eff)                                     # Empty array for Absolute Efficiency Values at requested Energy Values
+        A_E_2=zeros(nRowsColumns, 'd')
+
+        matrix=zeros((nRowsColumns,nRowsColumns), dtype=float)                          # Response matrix
+        D_Eff_matrix=zeros((1,nRowsColumns), 'd')                                 # Result of (inverse matrix)x(data matrix)
+        D_Eff=zeros((nRowsColumns), 'd')                                          # Result of (inverse matrix)x(data matrix) taken out of matrix form
+        D_Eff_Abs=zeros((nRowsColumns), 'd')                                      # Result of Total Absolute Efficiency division
+
+        for i in range(len(Peak_To_Tot)):
+            P_T_2[i]=splint(Energy_PT, Peak_To_Tot, Peak_Tot_2, E_for_matrix[i])   # Call splint to find values of P_T_2 and A_E_2 at energies of Data
+            A_E_2[i]=splint(Energy_PT, Abs_Eff, Abs_Eff_2, E_for_matrix[i])
+            if P_T_2[i]>1:                                                         # Peak-to-Total cannot exceed 1
+                P_T_2[i]=1                                                         # Absolute Efficiency cannot exceed 1
+            if A_E_2[i]>1:
+                A_E_2[i]=1
+
+        #---------------------------------------------------------------------
+        # PEAK-TO-TOTAL MATRIX & INVERSION PROCESS
+        
+        # Peak_To_Tot = Peak /(Peak+Beta) where Beta is the sum of all other points
+        for i in range(len(matrix[0])):
+            # Set Peak=1 always
+            if P_T_2[i]==1:
+                IndBeta=0
+            else:
+                Beta=1.-P_T_2[i]
+                if i==0:
+                    IndBeta=0
+                if i==1:
+                    IndBeta=Beta
+                else:
+                    IndBeta=Beta/(CH_for_ce[i]+1)
+            matrix[i][i]=P_T_2[i]
+            for j in range(len(matrix[0])):
+                if j<=CH_for_ce[i]:
+                    matrix[i][j]=IndBeta
+                if j>CH_for_ce[i] and j<i:
+                    matrix[i][j]=0   
+                if j>i:
+                    matrix[i][j]=0
+                if j==i:
+                    matrix[i][j]=matrix[i][i]
+            matrix[i][i]=P_T_2[i]
+
+        
+          
+    ##    writename7="102607_3x3in_matrix_wCE"
+    ##    wr7=open(writename7,'w')
+    ##    for i in range(len(matrix[0])):            
+    ##        for j in range(len(matrix[0])):
+    ##            wr7.write("%f "%(matrix[i][j]))
+    ##        wr7.write("\n")
+    ##        
+    ##    wr7.close()
+
+        inv_matrix=inverse(matrix)
+        D_Eff_matrix=matrixmultiply(D_matrix,inv_matrix)
+
+       
+        for i in range(nRowsColumns):                   # Take data out of matrix form
+            D_Eff[i]=D_Eff_matrix[0][i]
+            #D_Eff_Abs[i]=D_Eff[i]/A_E_2[i]              # Divide results by total absolute efficiency
+            D_Eff_Abs[i]=D_Eff[i]
+        name=writename+"_TwoStepProcessedData"
+        clf()
+        semilogy(E_for_matrix, D_for_matrix, 'k', E_for_matrix,D_Eff,'b',E_for_matrix,D_Eff_Abs,'r', lw=2 )
+        xlabel('Energy (keV)')
+        ylabel('Counts')
+        xlim(0,max(xbgE))
+        ylim(10,max(xD))
+        title('Select a Range to search for Fit Junctions')
+        legend(('Original Data','Processed Data','Processed Data w/ TotAbsEff'))
+        #savefig(name, format='png')
+        
+        wr2.write("'Matrix Inversion, Efficiency Data, and P_to_T Data'\n")
+        wr2.write("'E_for_matrix' 'Energy of ComptonEdge' 'D_for_matrix' 'D_Eff' 'D_Eff_Abs' 'P_T_2' \n")
+        for i in range(nRowsColumns):
+            wr2.write("%f %f %f %f %f %f %f %f\n" %(CH_for_matrix[i], E_for_matrix[i], CH_for_ce[i],Ece_for_matrix[i], D_for_matrix[i], D_Eff[i], D_Eff_Abs[i], P_T_2[i]))
+        
+
+        #---------------------------------------------------------------------
+        # Select only positive count results to use in further analysis
+        
+        D_Eff_Abs_Vals=D_Eff_Abs.tolist()           # Convert data and energy to list
+        E_Eff_Abs_Vals=E_for_matrix.tolist()
+
+        # Pull out only values >0
+        # Find first item in list of data to be used for multiplicity factor
+        for i in range(len(D_Eff_Abs_Vals)):
+            if D_Eff_Abs_Vals[i]>0:
+                D_Eff_Abs_Values=[D_Eff_Abs_Vals[i]]
+                E_Eff_Abs_Values=[E_Eff_Abs_Vals[i]]
+                index=i
+                break
+
+        # Complete the list  
+        wr2.write("\n")
+        wr2.write("'Positive Points from Matrix Inversion Result'\n")
+        wr2.write("'E' 'D_Eff_Abs'\n")    
+        for i in range(index+1, len(D_Eff_Abs_Vals),1):
+            if D_Eff_Abs_Vals[i]>0:
+                D_Eff_Abs_Values=concatenate((D_Eff_Abs_Values, [D_Eff_Abs_Vals[i]]))
+                E_Eff_Abs_Values=concatenate((E_Eff_Abs_Values, [E_Eff_Abs_Vals[i]]))
+        for i in range(len(D_Eff_Abs_Values)):
+            wr2.write("%f %f\n" %(E_Eff_Abs_Values[i],D_Eff_Abs_Values[i]))
+
+        wr2.write("\n")
+        print('Data for Matrix Sum:', sum(D_for_matrix))
+        print('Data post-Inversion Sum:', sum(D_Eff))
+        print('Data post-Inversion and Absolute Efficicency Sum:', sum(D_Eff_Abs))
+        #---------------------------------------------------------------------
+        # Plot the original x-ray data and processed data 
+        name=writename+"_Original&ProcessedData"
+        clf()
+        semilogy(xbgE,xD,'b',E_Eff_Abs_Values,D_Eff_Abs_Values,'r', lw=2 )
+        xlabel('Energy (keV)')
+        ylabel('Counts')
+        xlim(0,max(xbgE))
+        ylim(10,max(xD))
+        title('Select a Range to search for Fit Junctions')
+        legend(('Original Data','Processed Data'))
+        #savefig(name, format='png')
+       
+        #---------------------------------------------------------------------
+        # Select Fit Types and Fit Junction-Search Range
+        print('')
+        print('** Fit Information **')
+        print('   3rd Order Polynomial Fit, enter 0')
+        print('   1st Order Exponential Fit, enter 1')
+        print('**Enter 1st and 2nd Fit Types for the Original X-Ray Data')
+        onetype=int(input("Enter 0 or 1 to indicate the 1st type of fit:"))
+        twotype=int(input("Enter 0 or 1 to indicate the 2nd type of fit:"))
+        print('')
+        print('**Enter 1st and 2nd Fit Types for the Processed Data:')
+        threetype=int(input("Enter 0 or 1 to indicate the 1st type of fit:"))
+        fourtype=int(input("Enter 0 or 1 to indicate the 2nd type of fit:"))
+        print()
+        print('**Enter range to search for Original Data Fit Junction:')
+        BeginSearchJunction=int(input("Enter beginning energy value:"))
+        EndSearchJunction=int(input("Enter ending energy value:"))
+        print()
+        print('**Enter range to search for Processed Data Fit Junction:')
+        BeginSearchJunction_PD=int(input("Enter beginning energy value:"))
+        EndSearchJunction_PD=int(input("Enter ending energy value:"))
+        print('**Enter Energy at which to end fit:')
+        EndFit=int(input("End Fit at:"))    
+ 
+        #----------------------------------------------------------------------------
+        # ORIGINAL DATA FITS
+
+        FxD=zeros(xnDlines, 'd')                                    # Empty array to convert x-ray data to floating x-ray data
+        for i in range(xnDlines):                                   # Convert x-ray data to floating numbers
+            if xD[i]<=0:
+                xD[i]=0.0001
+            FxD[i]=float(xD[i])
+        
+        EnergyJunctions=zeros(EndSearchJunction-BeginSearchJunction,'d')            # Energy values at junction
+        Difference=zeros(EndSearchJunction-BeginSearchJunction,'d')                 # Difference b/w counts at junction
+        DerivativeDifference=zeros(EndSearchJunction-BeginSearchJunction,'d')       # Difference b/w derivatives at junction
+        aExpFit1=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        bExpFit1=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        cExpFit1=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        dExpFit1=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        chi_squared_Fit1=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        aExpFit2=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        bExpFit2=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        cExpFit2=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        dExpFit2=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        chi_squared_Fit2=zeros(EndSearchJunction-BeginSearchJunction,'d')
+        
+        # Find fits with smallest derivative between points
+        for j in range(0,EndSearchJunction-BeginSearchJunction):
+            B1=0                                                    # Begin energy 1st Fit
+            E1=j+BeginSearchJunction                                # End energy 1st Fit
+            B2=j+BeginSearchJunction                                # Begin energy 2nd Fit
+
+            # Find index of the energy
+            for i in range(xnDlines):                       
+                if xbgE[i]>=B1:
+                    BeginExpFit1=i
+                    break
+            for i in range(BeginExpFit1, xnDlines, 1):      
+                if xbgE[i]>=E1:
+                    EndExpFit1=i
+                    EnergyJunctions[j]=xbgE[i]
+                    break
+            for i in range(EndExpFit1, xnDlines, 1):       
+                if xbgE[i]>=B2:
+                    BeginExpFit2=i
+                    break
+            for i in range(xnDlines):
+                if xbgE[i]>EndFit:
+                    EndFitI=i
+                    break
+            EndExpFit2=EndFitI
+                    
+      
+            xDForExpFit1=zeros(EndExpFit1-BeginExpFit1,'d')          # Empty array for the data to be used for fit
+            LogxDForExpFit1=zeros(len(xDForExpFit1),'d')             # Empty array for the log of the data to be used for fit
+            EForExpFit1=xbgE[BeginExpFit1:EndExpFit1]                # Energy of data to be used for fit
+            xDForExpFit2=zeros(EndExpFit2-BeginExpFit2,'d')          # Empty array for the data to be used for fit
+            LogxDForExpFit2=zeros(len(xDForExpFit2),'d')             # Empty array for the log of the data to be used for fit
+            EForExpFit2=xbgE[BeginExpFit2:EndExpFit2]                # Energy of data to be used for fit
+
+            for i in range(BeginExpFit1, EndExpFit1, 1):             # Take the log of data to get linear fit
+                xDForExpFit1[i-BeginExpFit1]=FxD[i]
+                LogxDForExpFit1[i-BeginExpFit1]=log(FxD[i])
+            for i in range(BeginExpFit2, EndExpFit2, 1):             # Take the log of data to get linear fit
+                xDForExpFit2[i-BeginExpFit2]=FxD[i]
+                LogxDForExpFit2[i-BeginExpFit2]=log(FxD[i])
+
+            # Find the count values and derivatives at junction point
+            if onetype==0:
+                aExpFit1[j], bExpFit1[j], cExpFit1[j], dExpFit1[j]=LeastSquaresPoly3(EForExpFit1,LogxDForExpFit1)
+                xDExpFit1_y=exp(aExpFit1[j]+bExpFit1[j]*xbgE[EndExpFit1]+cExpFit1[j]*xbgE[EndExpFit1]**2+dExpFit1[j]*xbgE[EndExpFit1]**3)
+                xDExpFit1_prime=(bExpFit1[j]+2*cExpFit1[j]*xbgE[EndExpFit1]+3*dExpFit1[j]*xbgE[EndExpFit1]**2)*exp(aExpFit1[j]+bExpFit1[j]*xbgE[EndExpFit1]+cExpFit1[j]*xbgE[EndExpFit1]**2+dExpFit1[j]*xbgE[EndExpFit1]**3)
+            if onetype==1:
+                aExpFit1[j], bExpFit1[j], chi_squared_Fit1[j]=LeastSquares(EForExpFit1, LogxDForExpFit1)
+                xDExpFit1_y=exp(aExpFit1[j]+bExpFit1[j]*xbgE[EndExpFit1])
+                xDExpFit1_prime=bExpFit1[j]*exp(aExpFit1[j])*exp(bExpFit1[j]*xbgE[EndExpFit1])  
+            if twotype==0:
+                aExpFit2[j], bExpFit2[j], cExpFit2[j], dExpFit2[j]=LeastSquaresPoly3(EForExpFit2,LogxDForExpFit2)
+                xDExpFit2_y=exp(aExpFit2[j]+bExpFit2[j]*xbgE[BeginExpFit2]+cExpFit2[j]*xbgE[BeginExpFit2]**2+dExpFit2[j]*xbgE[BeginExpFit2]**3)
+                xDExpFit2_prime=(bExpFit2[j]+2*cExpFit2[j]*xbgE[BeginExpFit2]+3*dExpFit2[j]*xbgE[BeginExpFit2]**2)*exp(aExpFit2[j]+bExpFit2[j]*xbgE[BeginExpFit2]+cExpFit2[j]*xbgE[BeginExpFit2]**2+dExpFit2[j]*xbgE[BeginExpFit2]**3)
+            if twotype==1:
+                aExpFit2[j], bExpFit2[j],chi_squared_Fit1[j]=LeastSquares(EForExpFit2, LogxDForExpFit2)
+                xDExpFit2_y=exp(aExpFit2[j]+bExpFit2[j]*xbgE[BeginExpFit2])
+                xDExpFit2_prime=bExpFit2[j]*exp(aExpFit2[j])*exp(bExpFit2[j]*xbgE[BeginExpFit2])
+            Difference[j]=100.*abs(xDExpFit1_y-xDExpFit2_y)/abs(xDExpFit1_y)   
+            DerivativeDifference[j]=100.*abs(xDExpFit1_prime-xDExpFit2_prime)/abs(xDExpFit1_prime)
+
+        EnergyJunctionMinDer=min(DerivativeDifference)          # Smallest derivative difference at a junction
+        EnergyJunctionIndex=argmin(DerivativeDifference)        # Index of junction w/ smallest derivative
+        EnergyJunction=EnergyJunctions[EnergyJunctionIndex]     # Energy of junction w/ smallest derivative
+        aExpFit_1=aExpFit1[EnergyJunctionIndex]
+        bExpFit_1=bExpFit1[EnergyJunctionIndex]
+        cExpFit_1=cExpFit1[EnergyJunctionIndex]
+        dExpFit_1=dExpFit1[EnergyJunctionIndex]
+        aExpFit_2=aExpFit2[EnergyJunctionIndex]
+        bExpFit_2=bExpFit2[EnergyJunctionIndex]
+        cExpFit_2=cExpFit2[EnergyJunctionIndex]
+        dExpFit_2=dExpFit2[EnergyJunctionIndex]
+
+        # Find xbgE index of the energy junction
+        for i in range(xnDlines):                       
+            if xbgE[i]>=EnergyJunction:
+                Junction=i
+                break
+        
+        xDExpFit1=zeros(Junction,'d')                          # Empty array for Result of first Exponential Fit of Original X-Ray Data
+        xDExpFit2=zeros(xnDlines-Junction,'d')                 # Empty array for Result of second Exponential Fit of Original X-Ray Data
+        for i in range(0,Junction,1):
+            xDExpFit1[i]=exp(aExpFit_1+bExpFit_1*xbgE[i]+cExpFit_1*xbgE[i]**2+dExpFit_1*xbgE[i]**3)
+
+        for i in range(Junction,xnDlines,1):
+            xDExpFit2[i-Junction]=exp(aExpFit_2+bExpFit_2*xbgE[i]+cExpFit_2*xbgE[i]**2+dExpFit_2*xbgE[i]**3)
+
+        xDExpFits=concatenate((xDExpFit1, xDExpFit2))
+
+    ##    # Plot the original data and original data exponential fits
+    ##    clf()
+    ##    semilogy(xbgE,xD,'b',xbgE,xDExpFits,'m', lw=2)
+    ##    xlabel('Energy (keV)')
+    ##    ylabel('Counts')
+    ##    xlim(min(xbgE),max(xbgE))
+    ##    if max(xDExpFits)>max(xD):
+    ##        ylim(1,max(xDExpFits))
+    ##    else:
+    ##        ylim(1,max(xD))
+    ##    title('Original Data and Its Fit')
+    ##    legend(('Original Data','Original Data Fits'))
+    ##    text(0,100,'Fit Energy Junction:')
+    ##    text(0,75,str(EnergyJunction))
+    ##    text(0,25,'%Difference B/W Derivatives:')
+    ##    text(0,18,str(EnergyJunctionMinDer))
+    ##    savefig("11-12-07_OrigData&OrigData_Fits", format='png')        
+    ##    
+        wr2.write("\n")
+        #---------------------------------------------------------------------
+        #---------------------------------------------------------------------
+        # PROCESSED DATA FITS
+
+        EnergyJunctions_PD=zeros(EndSearchJunction_PD-BeginSearchJunction_PD,'d')         # Energy values at junction
+        EnergyJunctions_PD_index=zeros(len(EnergyJunctions_PD),'d') 
+        Difference_PD=zeros(len(EnergyJunctions_PD),'d')               # Difference b/w counts at junction
+        DerivativeDifference_PD=zeros(len(EnergyJunctions_PD),'d')     # Difference b/w derivatives at junction
+        aEffExpFit1=zeros(len(EnergyJunctions_PD),'d') 
+        bEffExpFit1=zeros(len(EnergyJunctions_PD),'d')
+        cEffExpFit1=zeros(len(EnergyJunctions_PD),'d')
+        dEffExpFit1=zeros(len(EnergyJunctions_PD),'d')
+        chi_squared_EffExpFit1=zeros(len(EnergyJunctions_PD),'d')
+        aEffExpFit2=zeros(len(EnergyJunctions_PD),'d')
+        bEffExpFit2=zeros(len(EnergyJunctions_PD),'d')
+        cEffExpFit2=zeros(len(EnergyJunctions_PD),'d')
+        dEffExpFit2=zeros(len(EnergyJunctions_PD),'d')
+        chi_squared_EffExpFit2=zeros(len(EnergyJunctions_PD),'d')
+
+        # Find fits with smallest difference between derivatves at junction
+        for j in range(0, EndSearchJunction_PD-BeginSearchJunction_PD):
+            BB1=0                                                       # Begin energy 1st Fit
+            EE1=j+BeginSearchJunction_PD                                # End energy 1st Fit
+            BB2=j+BeginSearchJunction_PD                                # Begin energy 2nd Fit
+
+            # Find index of the energy positions
+            for i in range(len(D_Eff_Abs_Values)):
+                if E_Eff_Abs_Values[i]>=BB1:                            # Search for index of energy
+                    BegExpFit1=i
+                    break
+            for i in range(BegExpFit1,len(D_Eff_Abs_Values),1):
+                if E_Eff_Abs_Values[i]>=EE1:
+                    EExpFit1=i
+                    EnergyJunctions_PD[j]=E_Eff_Abs_Values[i]           # Energy values at junction
+                    EnergyJunctions_PD_index[j]=i
+                    break
+            for i in range(EExpFit1,len(D_Eff_Abs_Values)):
+                if E_Eff_Abs_Values[i]>=BB2:
+                    BegExpFit2=i
+                    break
+            #EExpFit2=len(E_Eff_Abs_Values)-1
+            for i in range(xnDlines):
+                if E_Eff_Abs_Values[i]>EndFit:
+                    EExpFit2=i
+                    break
+
+            # Find index of this energy junction in terms of xbgE
+            for i in range(0, xnDlines,1):                                  
+                if xbgE[i]>=E_Eff_Abs_Values[EExpFit1]:
+                    index1=i
+                    break
+
+            EffDForExpFit1=zeros(EExpFit1-BegExpFit1,'d')                # Empty array for the data to be used for fit
+            LogEffDForExpFit1=zeros(len(EffDForExpFit1),'d')             # Empty array for the log of the data to be used for fit
+            EForEffExpFit1=E_Eff_Abs_Values[BegExpFit1:EExpFit1]         # Empty array for the energy of the data to be used for fit
+            EffDForExpFit2=zeros(EExpFit2-BegExpFit2,'d')                # Empty array for the data to be used for fit
+            LogEffDForExpFit2=zeros(len(EffDForExpFit2),'d')             # Empty array for the log of the data to be used for fit
+            EForEffExpFit2=E_Eff_Abs_Values[BegExpFit2:EExpFit2]         # Empty array for the energy of the data to be used for fit
+
+            for i in range(BegExpFit1, EExpFit1, 1):                     # Take the log of data to get linear fit
+                EffDForExpFit1[i-BegExpFit1]=D_Eff_Abs_Values[i]
+                LogEffDForExpFit1[i-BegExpFit1]=log(D_Eff_Abs_Values[i])
+            for i in range(BegExpFit2, EExpFit2, 1):                     # Take the log of data to get linear fit
+                EffDForExpFit2[i-BegExpFit2]=D_Eff_Abs_Values[i]
+                LogEffDForExpFit2[i-BegExpFit2]=log(D_Eff_Abs_Values[i])
+
+            if threetype==0:
+                aEffExpFit1[j], bEffExpFit1[j], cEffExpFit1[j],dEffExpFit1[j]=LeastSquaresPoly3(EForEffExpFit1, LogEffDForExpFit1)
+                EffDExpFit1_y=exp(aEffExpFit1[j]+bEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]+cEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]**2+dEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]**3)
+                EffDExpFit1_prime=(bEffExpFit1[j]+2*cEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]+3*dEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]**2)*exp(aEffExpFit1[j]+bEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]+cEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]**2+dEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]**3)
+            if threetype==1:
+                aEffExpFit1[j], bEffExpFit1[j],chi_squared_EffExpFit1[j]=LeastSquares(EForEffExpFit1, LogEffDForExpFit1)
+                EffDExpFit1_y=exp(aEffExpFit1[j]+bEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1])
+                EffDExpFit1_prime=bEffExpFit1[j]*exp(aEffExpFit1[j])*exp(bEffExpFit1[j]*E_Eff_Abs_Values[EExpFit1]) 
+            if fourtype==0:
+                aEffExpFit2[j], bEffExpFit2[j], cEffExpFit2[j], dEffExpFit2[j]=LeastSquaresPoly3(EForEffExpFit2, LogEffDForExpFit2)
+                EffDExpFit2_y=exp(aEffExpFit2[j]+bEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]+cEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]**2+dEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]**3)
+                EffDExpFit2_prime=(bEffExpFit2[j]+2*cEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]+3*dEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]**2)*exp(aEffExpFit2[j]+bEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]+cEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]**2+dEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1]**3)
+            if fourtype==1:
+                aEffExpFit2[j], bEffExpFit2[j], chi_squared_EffExpFit2[j]=LeastSquares(EForEffExpFit2, LogEffDForExpFit2)
+                EffDExpFit2_y=exp(aEffExpFit2[j]+bEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1])
+                EffDExpFit2_prime=bEffExpFit2[j]*exp(aEffExpFit2[j]+bEffExpFit2[j]*E_Eff_Abs_Values[EExpFit1])
+                
+            Difference_PD[j]=100.*abs(EffDExpFit1_y-EffDExpFit2_y)/abs(EffDExpFit1_y)
+            DerivativeDifference_PD[j]=100.*abs(EffDExpFit1_prime-EffDExpFit2_prime)/abs(EffDExpFit1_prime)
+
+    ##    name=writename+"_ProcessedDataDerivDiff"
+    ##    clf()
+    ##    plot(EnergyJunctions_PD, Difference_PD, 'b',EnergyJunctions_PD, DerivativeDifference_PD, 'm')
+    ##    xlabel('Energy (keV)')
+    ##    ylabel('% Difference')
+    ##    xlim(min(EnergyJunctions_PD), max(EnergyJunctions_PD))
+    ##    if max(DerivativeDifference_PD)>max(Difference_PD):
+    ##        ylim(0,max(DerivativeDifference_PD))
+    ##    else:
+    ##        ylim(0,max(Difference_PD))
+    ##    ylim(min(Difference_PD),max(Difference_PD))
+    ##    title('Finding Junction between Processed Data Fits')
+    ##    legend(('Count Value at Junction','Derivative at Junction'))
+    ##    savefig(name,format='png')
+        
+        EnergyJunctionMinDer_PD=min(DerivativeDifference_PD)                # Smallest derivative difference at a junction //Use for minimum derivative difference at junction
+        EnergyJunctionIndex_PD=argmin(DerivativeDifference_PD)              # Index of junction with smallest derivative // Use for minimum derivative difference at junction
+        EINDEX=EnergyJunctions_PD_index[EnergyJunctionIndex_PD]
+        EnergyJunction_PD=EnergyJunctions_PD[EnergyJunctionIndex_PD]        # Energy of junction with smallest derivative
+        aEffExpFit_1=aEffExpFit1[EnergyJunctionIndex_PD]
+        bEffExpFit_1=bEffExpFit1[EnergyJunctionIndex_PD]
+        cEffExpFit_1=cEffExpFit1[EnergyJunctionIndex_PD]
+        dEffExpFit_1=dEffExpFit1[EnergyJunctionIndex_PD]
+        chi_squared_EffExpFit_1=chi_squared_EffExpFit1[EnergyJunctionIndex_PD]
+        aEffExpFit_2=aEffExpFit2[EnergyJunctionIndex_PD]
+        bEffExpFit_2=bEffExpFit2[EnergyJunctionIndex_PD]
+        cEffExpFit_2=cEffExpFit2[EnergyJunctionIndex_PD]
+        dEffExpFit_2=dEffExpFit2[EnergyJunctionIndex_PD]
+        chi_squared_EffExpFit_2=chi_squared_EffExpFit2[EnergyJunctionIndex_PD]
+        
+        # Find index of the energy
+        for i in range(xnDlines):                       
+            if xbgE[i]>=EnergyJunction_PD:
+                Junction_PD=i
+                break
+            
+        EffDExpFit1=zeros(Junction_PD,'d')
+        EffDExpFit2=zeros(xnDlines-Junction_PD,'d')
+
+        for i in range(0,Junction_PD,1):
+            EffDExpFit1[i]=exp(aEffExpFit_1+bEffExpFit_1*xbgE[i]+cEffExpFit_1*xbgE[i]*xbgE[i]+dEffExpFit_1*xbgE[i]*xbgE[i]*xbgE[i])
+        for i in range(Junction_PD,xnDlines,1):
+            EffDExpFit2[i-Junction_PD]=exp(aEffExpFit_2+bEffExpFit_2*xbgE[i]+cEffExpFit_2*xbgE[i]*xbgE[i]+dEffExpFit_2*xbgE[i]*xbgE[i]*xbgE[i])
+        EffExpFits=concatenate((EffDExpFit1, EffDExpFit2))
+
+
+##        clf()
+##        semilogy(E_Eff_Abs_Values, D_Eff_Abs_Values, 'b', xbgE, EffExpFits, 'm')
+##        xlabel('Energy (keV)')
+##        ylabel('Counts')
+##        xlim(min(xbgE), max(xbgE))
+##        if max(EffExpFits)>max(D_Eff_Abs_Values):
+##            ylim(1,max(EffExpFits))
+##        else:
+##            ylim(1,max(D_Eff_Abs_Values))
+##        title('Processed Data and Its Fit')
+##        legend(('Processed Data','Processed Data Fits'))
+##        text(0,100,'Fit Energy Junction:')
+##        text(0,75,str(EnergyJunction_PD))
+##        text(0,25,'%Difference B/W Derivatives:')
+##        text(0,18,str(EnergyJunctionMinDer_PD))
+##        savefig("11-12-07_ProcessedData&ProcessedDataFits",format='png')
+
+        #---------------------------------------------------------------------
+        # MULTIPLICATION FACTOR: Divide out the Original Data and Processed Data fits to find a multiplicative factor
+
+        
+        wr2.write("'X-Ray Data Multiplied by result of dividing the Exp Fit of Eff_Abs Data by the Exp Fit of Original Data.'\n")
+        wr2.write("'E' 'xD' 'xDExpFit' 'D_Eff_Abs_ExpFit' 'MultFac' 'xFinalD' \n")
+        MultFac=zeros(xnDlines, 'd')
+
+        name=writename+"_Fits"
+        clf()
+        semilogy(xbgE,xD,'b',xbgE,xDExpFits,'r',E_Eff_Abs_Values,D_Eff_Abs_Values, 'k',xbgE, EffExpFits,'c',lw=2)
+        xlabel('Energy (keV)')
+        ylabel('Counts')
+        xlim(0,max(xbgE))
+        ylim(10,max(D_Eff_Abs_Values))
+        title('Data and Its Fits')
+        text(10,100,'Original Data Fit Energy Junction:')
+        text(10,85,str(EnergyJunction))
+        text(10,65,'%Difference B/W Derivatives:')
+        text(10,50,str(EnergyJunctionMinDer))
+        text(10,25,'Processed Data Fit Energy Junction:')
+        text(10,20,str(EnergyJunction_PD))
+        text(10,15,'%Difference B/W Derivatives:')
+        text(10,12,str(EnergyJunctionMinDer_PD))
+        legend(('Original Data','Original Data Fits', 'Processed Data', 'Processed Data Fits'))
+##        savefig("11-12-07_ProcessedData&ProcessedDataFits",format='png')
+        for i in range(len(EffExpFits)):
+            MultFac[i]=EffExpFits[i]/xDExpFits[i]
+        
+        wr2.close()
+
+        name=writename+"_MultiplicationFactor"
+        clf()
+        plot(xbgE,MultFac,'k', lw=2)
+        xlabel('Energy (keV)')
+        ylabel('Processed Data Fit/Original Data Fit')
+        xlim(0,max(xbgE))
+        ylim(min(MultFac),max(MultFac))
+        title('Multiplication Factor')
+        
+        print('**Enter the range for which to make a fit to the Multiplication Factor:')
+        begin=int(input('Enter beginning energy:'))
+        end=int(input('Enter ending energy:'))
+
+        for i in range(xnDlines):
+            if xbgE[i]>=begin:
+                beginIndex=i
+                break
+        for i in range(xnDlines):
+            if xbgE[i]>=end:
+                endIndex=i
+                break
+        xDFinal2=zeros(len(xbgE), 'd')                          # Final X-Ray Data
+        E_for_MultFacFit=zeros(endIndex-beginIndex,'d')         # Mult Fac Energy for fit
+        DataMultFacFit=zeros(len(E_for_MultFacFit),'d')         # Mult Fac for fit
+        MultFacFit=zeros(len(xbgE),'d')                         # Mult Fac from fit
+        for i in range(beginIndex,endIndex,1):
+            DataMultFacFit[i-beginIndex]=log(MultFac[i])
+            E_for_MultFacFit[i-beginIndex]=xbgE[i]
+            
+        a_M, b_M, chi_squared_M=LeastSquares(E_for_MultFacFit, DataMultFacFit)
+        for i in range(len(xbgE)):
+            MultFacFit[i]=exp(a_M+b_M*xbgE[i])
+##            if MultFacFit[i]<1.0:
+##                MultFacFit[i]=1.0
+                
+        name=writename+"_MultiplicationFactorFit"
+        clf()
+        plot(xbgE,MultFac,'k',xbgE, MultFacFit,'c', lw=2)
+        xlabel('Energy (keV)')
+        ylabel('Processed Data Fit/Original Data Fit')
+        xlim(0,max(xbgE))
+        ylim(min(MultFac),max(MultFac))
+        title('Multiplication Factor')
+        text(5,3*max(MultFac)/2.+0.1, 'Multiplication Factor Chi-Squared Value:')
+        text(5,max(MultFac)/2.,str(chi_squared_M))
+        
+        for i in range(len(xbgE)):
+            xDFinal2[i]=MultFacFit[i]*xD[i]
+            if xDFinal2[i]<0:
+                xDFinal2[i]=0.0001
+        fname='Updated'
+                
+    if efficiency_decision=='no':
+        xDFinal2=xD
+        for i in range(len(xbgE)):
+            if xDFinal2[i]<0:
+                xDFinal2[i]=0.0001
+            if xD[i]<0:
+                xD[i]=0.0001
+        fname='Original'
+    return(xbgname, xname, xbgCH, xbgE, xD,xbgE, xDFinal2, xnDlines, axbgE, bxbgE, chi_squared_E, meanG, Epeaks,fname)
+
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------
+# LEAST-SQUARES FIRST ORDER FIT
+def LeastSquares(x,y):
+    # Least-Squares Fit
+    n=len(x)
+    xsum=sum(x, axis=0)
+    ysum=sum(y, axis=0)
+    xsqsum=sum(x*x, axis=0)
+    ysqsum=sum(y*y,axis=0)
+    xysum=sum(x*y, axis=0)
+    xsumsq=xsum*xsum
+    ysumsq=ysum*ysum
+    # y=a+bx
+    a=1.0*(ysum*xsqsum-xsum*xysum)/(n*xsqsum-xsumsq)
+    b=1.0*(n*xysum-xsum*ysum)/(1.0*(n*xsqsum-xsumsq))
+
+    chi_squared=0.
+    # Chi-Squared Statistic
+    for i in range(n):
+        sigma_squared=y[i]                                 # For Statistical Uncertainties (Counting Experiments)
+        chi_squared=chi_squared+(1/sigma_squared)*(y[i]-a-b*x[i])**2
+        
+    
+    return(a,b, chi_squared)
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+# LEAST-SQUARES SECOND ORDER FIT
+
+def LeastSquaresPoly(x,y):
+    # Least-Squares Second Order Polynomial Fit
+    n=len(x)
+  
+    xsum=sum(x, axis=0)
+    ysum=sum(y, axis=0)
+    
+    x2sum=sum(x*x, axis=0)
+    y2sum=sum(y*y,axis=0)
+    x3sum=sum(1.0*x*x*x, axis=0)
+    
+    x4sum=sum(1.0*x*x*x*x, axis=0)
+    #print xsum, ysum, x2sum, x3sum, x4sum 
+    xysum=sum(x*y, axis=0)
+    x2ysum=sum(x*x*y, axis=0)
+    
+    xsumsq=xsum*xsum
+    ysumsq=ysum*ysum
+    # y=a+bx+cx^2
+    delta=1.0*n*(x2sum*x4sum-x3sum*x3sum)-xsum*(xsum*x4sum-x3sum*x2sum)+x2sum*(xsum*x3sum-x2sum*x2sum)
+    a=(1/delta)*(ysum*(x2sum*x4sum-x3sum*x3sum)-xsum*(xysum*x4sum-x3sum*x2ysum)+x2sum*(xysum*x3sum-x2sum*x2ysum))
+    b=(1/delta)*(n*(xysum*x4sum-x3sum*x2ysum)-ysum*(xsum*x4sum-x3sum*x2sum)+x2sum*(xsum*x2ysum-xysum*x2sum))
+    c=(1/delta)*(n*(x2sum*x2ysum-xysum*x3sum)-xsum*(xsum*x2ysum-xysum*x2sum)+ysum*(xsum*x3sum-x2sum*x2sum))
+   
+
+    return(a,b,c)
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+def LeastSquaresPoly3(x,y):
+    # Least-Squares 3rd order Polynomial Fit
+    n=len(x)
+    
+    xsum=sum(x, axis=0)
+    ysum=sum(y, axis=0)
+    
+    x2sum=sum(x*x, axis=0)
+    y2sum=sum(y*y,axis=0)
+    x3sum=sum(1.0*x*x*x, axis=0)
+    x4sum=sum(1.0*x*x*x*x, axis=0)
+    x5sum=sum(1.0*x*x*x*x*x, axis=0)
+    x6sum=sum(1.0*x*x*x*x*x*x, axis=0)
+    
+    xysum=sum(x*y, axis=0)
+    x2ysum=sum(x*x*y, axis=0)
+    x3ysum=sum(x*x*x*y, axis=0)
+    
+    xsumsq=xsum*xsum
+    ysumsq=ysum*ysum
+
+    # y=a+bx+cx^2+dx^3
+    det=1.0*determinant(array([[n, xsum, x2sum, x3sum],[xsum, x2sum, x3sum, x4sum],[x2sum, x3sum, x4sum, x5sum],[x3sum, x4sum, x5sum, x6sum]]))
+    a=(1/det)*determinant(array([[ysum, xsum, x2sum, x3sum],[xysum, x2sum, x3sum, x4sum],[x2ysum, x3sum, x4sum, x5sum],[x3ysum, x4sum, x5sum, x6sum]]))
+    b=(1/det)*determinant(array([[n, ysum, x2sum, x3sum],[xsum, xysum, x3sum, x4sum],[x2sum, x2ysum, x4sum, x5sum],[x3sum, x3ysum, x5sum, x6sum]]))
+    c=(1/det)*determinant(array([[n, xsum, ysum, x3sum],[xsum, x2sum, xysum, x4sum],[x2sum, x3sum, x2ysum, x5sum],[x3sum, x4sum, x3ysum, x6sum]]))
+    d=(1/det)*determinant(array([[n,xsum,x2sum,ysum],[xsum, x2sum, x3sum, xysum],[x2sum, x3sum, x4sum, x2ysum],[x3sum, x4sum, x5sum, x3ysum]]))
+
+    
+
+    return(a,b,c,d)
+
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+# Spline Code by Damon Todd
+def spline(x,y):
+	N=len(x)
+	D=zeros(N,'d')
+	B=zeros(N,'d')
+	y2=zeros(N,'d')
+	dx=x[1]-x[0]
+	B[0]=y2[0]=0.0
+	D[0]=1.0
+	y2[1]=dx 
+	D[1]=4.0*(dx)
+	B[1]=6.0*(y[2]-2.0*y[1]+y[0])/dx;
+	for j in range(2,N-1):
+	    i=j-1 
+	    k=j+1
+	    B[j]=y2[i]/D[i]
+	    y2[j]=dx
+	    D[j]=4.0*dx-y2[j]*B[j]
+	    B[j]=6.0*(y[j+1]-2.0*y[j]+y[j-1])/dx-B[j-1]*B[j]
+
+	B[N-1]=0.0
+	y2[N-1]=0.0
+	y2[N-2]=B[N-2]/D[N-2]
+	for i in range(N-3,0,-1):
+	    y2[i]=(B[i]-y2[i]*y2[i+1])/D[i]
+	y2[0]=0.0
+	return y2
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+# Splint Code by Damon Todd
+def splint(x,y,y2,X):
+  N=len(y); h=x[2]-x[1];
+  if(X<x[0]): X=x[0]    # Questionable solution method
+  if(X>x[N-1]): X=x[N-1]  # Questionable solution method
+  for i in range(1,N):
+    if(X<=x[i]):
+     l1=X-x[i-1]; l2=x[i]-X
+     return ((y2[i]*pow(l1,3)+y2[i-1]*pow(l2,3))/(6.0*h) + (y[i]/h-y2[i]*h/6.0)*l1+(y[i-1]/h-y2[i-1]*h/6.0)*l2)
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+# Function to smooth out data by averaging certain number of points
+def smoothdata(nDlines, D, CH, Epeaks, subtractStart1, subtractEnd1, subtractStart2, subtractEnd2):
+    x=int(nDlines)
+
+#
+    Nch_o=nDlines                                               # number of original channels
+    Nch_f=500                                                   # number of new channels
+    dch=float(Nch_o)/float(Nch_f)                               # ratio of old # channels to new # channels
+    P_ave=5.2
+    W_ave=3.2
+    width=int(ceil(3.2))
+    AvgD=zeros(Nch_f, 'd')
+    AvgCH=zeros(Nch_f, dtype=int)
+    
+    for i in range(Nch_f):
+        sum=0
+        div=0
+        CH=i*dch
+        ich=int(CH)
+        for j in range(ich-width-1, ich+width+2):
+            dd=abs(j-CH)/W_ave
+            if (j>=0 and j<Nch_o and dd<1.0):
+                t_div=(1-dd)*P_ave
+                sum=sum+t_div*D[j]
+                div=div+t_div
+            for q in range(len(Epeaks)):
+               if int(subtractStart1[q])==j:
+                   subtractStart1[q]=i
+               if int(subtractEnd1[q])==j:
+                   subtractEnd1[q]=i
+               if int(subtractStart2[q])==j:
+                   subtractStart2[q]=i
+               if int(subtractEnd2[q])==j:
+                   subtractEnd2[q]=i
+        if div>0.0: AvgD[i]=sum/div
+        AvgCH[i]=int(i)
+
+# Removed (beginrange, midrange, endrange, endrangetwo,) from list of return values
+    return(AvgCH, AvgD, Nch_f, subtractStart1, subtractEnd1, subtractStart2, subtractEnd2)
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+# Function to smooth out data by averaging certain number of points
+def smoothXdata(nDlines, D, CH):
+    x=int(nDlines)
+
+#
+    Nch_o=nDlines                                               # number of original channels
+    Nch_f=500                                                   # number of new channels
+    dch=float(Nch_o)/float(Nch_f)                               # ratio of old # channels to new # channels
+    P_ave=5.2
+    W_ave=3.2
+    width=int(ceil(3.2))
+    AvgD=zeros(Nch_f, 'd')
+    AvgCH=zeros(Nch_f, dtype=int)
+
+    for i in range(Nch_f):
+        sum=0
+        div=0
+        CH=i*dch
+        ich=int(CH)
+        for j in range(ich-width-1, ich+width+2):
+            dd=abs(j-CH)/W_ave
+            if (j>=0 and j<Nch_o and dd<1.0):
+                t_div=(1-dd)*P_ave
+                sum=sum+t_div*D[j]
+                div=div+t_div
+        if div>0.0: AvgD[i]=sum/div
+        AvgCH[i]=int(i)
+
+    return(AvgCH, AvgD, Nch_f)
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------
+
+(xbgname, xname, xbgchannel,xoriginalE, xoriginaldata,xE, xdata, xnDlines, axbgE, bxbgE, chi_squared_E, meanG, Epeaks,name)=checklivetime()
+writename=str(name) + xbgname[:-4] + "&" + xname[:-4]
+writename2=str(name) + xbgname[:-4] + "&" + xname[:-4]+"_DataOnly"
+print('')
+length=len(xdata)
+print("Output File name:", writename)
+wr=open(writename, 'w')
+wr2=open(writename2,'w')
+wr.write("\n")
+wr.write("'XRay & Background File:' %s\n"%xbgname)
+wr.write("'XRay File:' %s\n"%xname)
+#wr.write("'Channel' 'Energy(keV)' 'XR&BGCounts' 'XRCounts' 'XR&BG-XRCounts'")
+#wr.write("\n")
+#for i in range(0, len(xdata)):
+    #wr.write("%f %f %f %f %f \n"%(xbgchannel[i], xbgenergy[i], xbgdata[i], xdata[i], bgdata[i]))
+#wr.write("\n")
+wr.write("'Channel' 'Energy(keV)' 'Original Data' 'Data w/Efficiencies'\n")
+for i in range(length):
+    wr.write("%f %f %f %f\n"%(xbgchannel[i], xE[i], xoriginaldata[i], xdata[i]))
+    wr2.write("%f %f %f %f\n"%(xbgchannel[i], xE[i], xoriginaldata[i], xdata[i]))
+wr.write("\n")
+#-----------------------------------------------------------------------------------
+wr.write("'The Energy Calibration of the Spectrum, where Bi207 was used for calibration in a linear fit, is'\n")
+wr.write("'E[i]=a+b*Channel[i] where the a, b, and the Chi-Squared value are:'\n")
+wr.write("%f %f\n"%(axbgE, bxbgE))
+wr.write("\n")
+wr.write("'In order to find the Spectral Temperatures, the following steps are taken:'\n")
+wr.write("  '1. Log of data taken.'\n")
+wr.write("  '2. Least-Squares Linear Fit applied to represent the data in the form of y=Beta*exp[-Alpha*x] where x is Energy and y is Count #.'\n")
+wr.write("  '3. (1/Alpha) is the Spectral Temperature.'\n")
+wr.write("\n")
+#--------------Spectral Temperature--------------------------------------------------
+
+# Step 1: Take the log of the x-ray data
+
+LogxD=zeros(len(xdata),'d')
+for i in range(0, length, 1):
+    if xdata[i]<1:
+        xdata[i]=1
+    else:
+        xdata[i]=xdata[i]
+    LogxD[i]=log(xdata[i])
+
+rangestarts=array([60,120,30])
+rangeends=array([120,200,120])   
+startEi=zeros(len(rangestarts),'d')-1
+endEi=zeros(len(rangeends),'d')-1
+
+for j in range(len(xE)):                            # changed xbgenergy->xE
+    for i in range(len(rangestarts)):
+        if xE[j]>=rangestarts[i] and startEi[i]==-1:   # changed xbgenergy->xE
+            startEi[i]=j
+        if xE[j]>=rangeends[i] and endEi[i]==-1:       # changed xbgenergy->xE
+            endEi[i]=j
+    
+# Step 2: Fit a linear curve to LogxD
+alpha=zeros(len(rangestarts),'d')
+beta=zeros(len(rangestarts),'d')
+specT=zeros(len(rangestarts),'d')
+sum_of_counts=zeros(len(rangestarts))
+a=zeros(len(rangestarts),'d')
+b=zeros(len(rangestarts),'d')
+chi_squared=zeros(len(rangestarts),'d')
+print('')
+for i in range(len(rangestarts)):
+    start=int(startEi[i])
+    end=int(endEi[i])
+    LinxD=LogxD[start:end]
+    LinxE=xE[start:end]
+    (a[i],b[i],chi_squared[i])=LeastSquares(LinxE,LinxD)
+    specT[i]=1.0*abs(1.0/b[i])
+    beta[i]=1.0*exp(a[i])
+    alpha[i]=-1.0*(b[i])
+    print('Ts for Range', rangestarts[i],'-',rangeends[i],'is', specT[i])
+    sum_of_counts[i]=(-beta[i]/alpha[i])*exp(-alpha[i]*rangeends[i])-(-beta[i]/alpha[i])*exp(-alpha[i]*rangestarts[i])
+    print('Sum of Counts for Range', rangestarts[i],'-',rangeends[i],'is', sum_of_counts[i])
+
+SumTotalOriginal=sum(xoriginaldata)
+SumTotalProcessed=sum(xdata)
+print(SumTotalOriginal, SumTotalProcessed)
+wr.write("\n")
+wr.write("'**X-Ray Data Obtained With Online Calibration:**'\n")
+wr.write("Range 'Spectral Temperature' Alpha Beta Chi-Squared\n")
+for i in range(1):
+    wr.write("60-120keV %f %f %f %f\n"%(specT[0], alpha[0], beta[0], chi_squared[0]))
+    wr.write("30-120keV %f %f %f %f\n"%(specT[2], alpha[2], beta[2], chi_squared[2]))
+    wr.write("120-200keV %f %f %f %f\n"%(specT[1], alpha[1], beta[1], chi_squared[1]))
+    wr.write("'The integrated # of counts for range 60-120keV is:' %f\n"%(sum_of_counts[0]))
+    wr.write("'The integrated # of counts for range 30-120keV is:' %f\n"%(sum_of_counts[2]))
+    wr.write("'The integrated # of counts for range 120-200keV is:' %f\n"%(sum_of_counts[1]))
+    wr.write("'The sum # of counts for original data is:' %f\n"%(SumTotalOriginal))
+    wr.write("'The sum # of counts for processed data is:' %f\n"%(SumTotalProcessed))
+
+
+wr.close()
+wr2.close()
+
+clf()
+semilogy(xoriginalE,xoriginaldata,'b',xE,xdata,'r', lw=2)
+xlabel('Energy (keV)')
+ylabel('Counts')
+xlim(min(xoriginalE), max(xoriginalE))
+ylim(1,max(xoriginaldata))
+legend(('Original Data','Final Data' ))
+title('Final X-Ray Data')
+text(0,100,'Spectral Temperatures:')
+text(0,75,str(specT[0]))
+text(0,50,str(specT[1]))
+text(0,25,'Integrated Counts:')
+text(0,18,str(sum_of_counts[0]))
+text(0,12,str(sum_of_counts[1]))
+text(0,8,'X-Ray File:')
+text(0,6,xname)
+text(0,4,'X-Ray & Background File:')
+text(0,3,xbgname)
+text(0,1.4, 'Analysis File:')
+text(0,1,writename)
+savefig(writename, format='png')
