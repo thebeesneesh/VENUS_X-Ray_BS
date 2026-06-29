@@ -1,0 +1,59 @@
+MCA analysis folder: .
+Number of .mca files: 3
+
+File: Run15.mca
+Livetime: 120.0
+Start time: 07/09/2025 21:57:09
+Gain: 9.998424  (calculated from 9.84 x 1.0161)
+Fast count: 1501
+Slow count: 3909
+RawData length: 1024
+Peak energy used to start search: 75.70011817174495
+Selected fit range: 83.038387704637 to 199.92653812141748 keV
+Selected fit points: 223
+Fit R^2: 0.6241942995851195
+Fit slope: -0.016277175987037484
+Alpha (-slope): 0.016277175987037484
+Fit intercept beta: -0.470970901715352
+Spectral temperature Ts (1/alpha): 61.43571838237551
+Plot file: Run15_analysis.png
+
+------------------------------------------------------------------------
+
+File: Run16.mca
+Livetime: 120.0
+Start time: 07/09/2025 22:02:28
+Gain: 9.998424  (calculated from 9.84 x 1.0161)
+Fast count: 1698
+Slow count: 4243
+RawData length: 1024
+Peak energy used to start search: 76.22428028123724
+Selected fit range: 80.94173926666784 to 199.92653812141748 keV
+Selected fit points: 227
+Fit R^2: 0.5612231383698321
+Fit slope: -0.014773751320309733
+Alpha (-slope): 0.014773751320309733
+Fit intercept beta: -0.5923380159762215
+Spectral temperature Ts (1/alpha): 67.68761557704593
+Plot file: Run16_analysis.png
+
+------------------------------------------------------------------------
+
+File: Run17.mca
+Livetime: 120.0
+Start time: 07/09/2025 22:09:26
+Gain: 9.998424  (calculated from 9.84 x 1.0161)
+Fast count: 2154
+Slow count: 5651
+RawData length: 1024
+Peak energy used to start search: 76.22428028123724
+Selected fit range: 82.51422559514471 to 199.92653812141748 keV
+Selected fit points: 225
+Fit R^2: 0.7004353803579892
+Fit slope: -0.015373233254318868
+Alpha (-slope): 0.015373233254318868
+Fit intercept beta: -0.2056297067507532
+Spectral temperature Ts (1/alpha): 65.04812510530702
+Plot file: Run17_analysis.png
+
+------------------------------------------------------------------------
