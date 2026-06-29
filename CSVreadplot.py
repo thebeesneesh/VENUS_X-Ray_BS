@@ -6,6 +6,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
 from scipy.signal import find_peaks
+import tkinter as tk
+from tkinter import filedialog
 
 
 # Calibration anchors from the supplied table.
@@ -176,7 +178,18 @@ def resolve_input_files(input_paths):
 
 
 def main():
-    input_files = resolve_input_files(sys.argv[1:])
+    if len(sys.argv) > 1:
+        input_paths = sys.argv[1:]
+    else:
+        input_paths = []
+        root = tk.Tk()
+        root.withdraw()
+        selected_folder = filedialog.askdirectory(title='Select folder to analyze')
+        root.destroy()
+        if selected_folder:
+            input_paths = [selected_folder]
+
+    input_files = resolve_input_files(input_paths)
     print('Using oxygen-charge-state-based M/Q calibration')
 
     summaries = []
@@ -197,8 +210,22 @@ def main():
     existing_columns = [col for col in ordered_columns if col in results_df.columns]
     results_df = results_df[existing_columns]
 
-    results_df.to_csv('combined_oxygen_peak_results.csv')
-    Path('combined_oxygen_peak_results.txt').write_text(results_df.to_string())
+    output_csv = Path('combined_oxygen_peak_results.csv')
+    output_txt = Path('combined_oxygen_peak_results.txt')
+
+    if output_csv.exists():
+        existing_df = pd.read_csv(output_csv)
+        if 'file' in existing_df.columns:
+            existing_df = existing_df.set_index('file')
+        if not results_df.index.name:
+            results_df.index.name = 'file'
+        combined_df = pd.concat([existing_df, results_df], axis=0)
+        combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
+    else:
+        combined_df = results_df
+
+    combined_df.to_csv(output_csv)
+    output_txt.write_text(combined_df.to_string())
 
     print(f'Processed {len(input_files)} file(s).')
     print(results_df)
