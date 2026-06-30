@@ -9,13 +9,13 @@ Fast count: 1501
 Slow count: 3909
 RawData length: 1024
 Peak energy used to start search: 75.70011817174495
-Selected fit range: 83.038387704637 to 199.92653812141748 keV
-Selected fit points: 223
-Fit R^2: 0.6241942995851195
-Fit slope: -0.016277175987037484
-Alpha (-slope): 0.016277175987037484
-Fit intercept beta: -0.470970901715352
-Spectral temperature Ts (1/alpha): 61.43571838237551
+Selected fit range: 81.46590137616013 to 293.22739361104493 keV
+Selected fit points: 326
+Fit R^2: 0.7906113347678624
+Fit slope: -0.015951982892228735
+Alpha (-slope): 0.015951982892228735
+Fit intercept beta: -0.544385159360117
+Spectral temperature Ts (1/alpha): 62.688131422656305
 Plot file: Run15_analysis.png
 
 ------------------------------------------------------------------------
@@ -28,13 +28,13 @@ Fast count: 1698
 Slow count: 4243
 RawData length: 1024
 Peak energy used to start search: 76.22428028123724
-Selected fit range: 80.94173926666784 to 199.92653812141748 keV
-Selected fit points: 227
-Fit R^2: 0.5612231383698321
-Fit slope: -0.014773751320309733
-Alpha (-slope): 0.014773751320309733
-Fit intercept beta: -0.5923380159762215
-Spectral temperature Ts (1/alpha): 67.68761557704593
+Selected fit range: 80.94173926666784 to 299.5173389249524 keV
+Selected fit points: 357
+Fit R^2: 0.7768343101784362
+Fit slope: -0.015220125311954628
+Alpha (-slope): 0.015220125311954628
+Fit intercept beta: -0.5636498835334168
+Spectral temperature Ts (1/alpha): 65.70248138591548
 Plot file: Run16_analysis.png
 
 ------------------------------------------------------------------------
@@ -47,13 +47,13 @@ Fast count: 2154
 Slow count: 5651
 RawData length: 1024
 Peak energy used to start search: 76.22428028123724
-Selected fit range: 82.51422559514471 to 199.92653812141748 keV
-Selected fit points: 225
-Fit R^2: 0.7004353803579892
-Fit slope: -0.015373233254318868
-Alpha (-slope): 0.015373233254318868
-Fit intercept beta: -0.2056297067507532
-Spectral temperature Ts (1/alpha): 65.04812510530702
+Selected fit range: 80.41757715717556 to 296.89652837749094 keV
+Selected fit points: 355
+Fit R^2: 0.8490680163827422
+Fit slope: -0.016598743958140788
+Alpha (-slope): 0.016598743958140788
+Fit intercept beta: -0.07498965281747026
+Spectral temperature Ts (1/alpha): 60.24552234324658
 Plot file: Run17_analysis.png
 
 ------------------------------------------------------------------------

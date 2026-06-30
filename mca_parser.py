@@ -1,4 +1,5 @@
 import argparse
+import csv
 import re
 from pathlib import Path
 import tkinter as tk
@@ -150,7 +151,38 @@ def score_linear_fit(x_fit, y_fit, slope, intercept):
     return r_squared, ss_res / len(x_fit)
 
 
-def find_most_linear_log_range(x_values, y_values, peak_window=(60.0, 100.0), max_energy=200.0):
+def linear_fit_uncertainties(x_fit, y_fit, slope, intercept):
+    predicted = slope * x_fit + intercept
+    residuals = y_fit - predicted
+    n = len(x_fit)
+    degrees_of_freedom = n - 2
+    sxx = np.sum((x_fit - np.mean(x_fit)) ** 2)
+
+    if degrees_of_freedom <= 0 or sxx == 0:
+        return None, None, None, None
+
+    residual_variance = np.sum(residuals ** 2) / degrees_of_freedom
+    residual_std_error = np.sqrt(residual_variance)
+    slope_error = np.sqrt(residual_variance / sxx)
+    intercept_error = np.sqrt(residual_variance * ((1.0 / n) + (np.mean(x_fit) ** 2 / sxx)))
+    slope_intercept_covariance = -np.mean(x_fit) * residual_variance / sxx
+    return slope_error, intercept_error, residual_std_error, slope_intercept_covariance
+
+
+def fitted_line_error(x_values, fit_result):
+    slope_error = fit_result['slope_error']
+    intercept_error = fit_result['intercept_error']
+    covariance = fit_result['slope_intercept_covariance']
+
+    if slope_error is None or intercept_error is None or covariance is None:
+        return None
+
+    x = np.asarray(x_values, dtype=float)
+    variance = (x ** 2 * slope_error ** 2) + (intercept_error ** 2) + (2.0 * x * covariance)
+    return np.sqrt(np.maximum(variance, 0.0))
+
+
+def find_most_linear_log_range(x_values, y_values, peak_window=(50.0, 120.0), max_energy=300.0):
     x = np.asarray(x_values, dtype=float)
     y = np.asarray(y_values, dtype=float)
     finite_positive = np.isfinite(x) & np.isfinite(y) & (y > 0)
@@ -185,6 +217,12 @@ def find_most_linear_log_range(x_values, y_values, peak_window=(60.0, 100.0), ma
 
             slope, intercept = np.polyfit(x_fit, y_fit, 1)
             r_squared, mean_squared_error = score_linear_fit(x_fit, y_fit, slope, intercept)
+            slope_error, intercept_error, residual_std_error, slope_intercept_covariance = linear_fit_uncertainties(
+                x_fit,
+                y_fit,
+                slope,
+                intercept,
+            )
             length_bonus = 0.03 * ((stop - start) / n)
             span_bonus = 0.03 * (span / full_span)
             slope_penalty = 0.25 if slope >= 0 else 0.0
@@ -199,6 +237,10 @@ def find_most_linear_log_range(x_values, y_values, peak_window=(60.0, 100.0), ma
                     'y_fit': y_fit,
                     'r_squared': r_squared,
                     'mean_squared_error': mean_squared_error,
+                    'slope_error': slope_error,
+                    'intercept_error': intercept_error,
+                    'residual_std_error': residual_std_error,
+                    'slope_intercept_covariance': slope_intercept_covariance,
                     'peak_energy': peak_energy,
                     'min_energy': x_fit[0],
                     'max_energy': x_fit[-1],
@@ -221,6 +263,12 @@ def fit_log_linear(x_values, y_values):
         return None
     slope, intercept = np.polyfit(x_fit, y_fit, 1)
     r_squared, mean_squared_error = score_linear_fit(x_fit, y_fit, slope, intercept)
+    slope_error, intercept_error, residual_std_error, slope_intercept_covariance = linear_fit_uncertainties(
+        x_fit,
+        y_fit,
+        slope,
+        intercept,
+    )
     return {
         'score': r_squared,
         'slope': slope,
@@ -229,30 +277,59 @@ def fit_log_linear(x_values, y_values):
         'y_fit': y_fit,
         'r_squared': r_squared,
         'mean_squared_error': mean_squared_error,
+        'slope_error': slope_error,
+        'intercept_error': intercept_error,
+        'residual_std_error': residual_std_error,
+        'slope_intercept_covariance': slope_intercept_covariance,
         'peak_energy': None,
         'min_energy': x_fit[0],
         'max_energy': x_fit[-1],
     }
 
 
+CSV_COLUMNS = [
+    'file',
+    'livetime',
+    'start_time',
+    'gain',
+    'gain_formula',
+    'fast_count',
+    'slow_count',
+    'raw_data_length',
+    'peak_energy_keV',
+    'fit_range_min_keV',
+    'fit_range_max_keV',
+    'fit_points',
+    'fit_r_squared',
+    'fit_mean_squared_error',
+    'fit_residual_std_error',
+    'fit_slope',
+    'fit_slope_error',
+    'alpha',
+    'alpha_error',
+    'fit_intercept_beta',
+    'fit_intercept_beta_error',
+    'spectral_temperature',
+    'spectral_temperature_error',
+    'spectral_temperature_error_type',
+    'plot_file',
+    'fit_status',
+]
+
+
 def analyze_mca_file(input_file, output_dir):
     result = parse_mca_file(input_file)
-    output_lines = [
-        f"File: {result['file']}",
-        f"Livetime: {result['livetime']}",
-        f"Start time: {result['start_time']}",
-    ]
-
-    if result['gain_formula']:
-        output_lines.append(f"Gain: {result['gain']}  (calculated from {result['gain_formula']})")
-    else:
-        output_lines.append(f"Gain: {result['gain']}")
-
-    output_lines.extend([
-        f"Fast count: {result['fast_count']}",
-        f"Slow count: {result['slow_count']}",
-        f"RawData length: {len(result['RawData'])}",
-    ])
+    row = {
+        'file': result['file'],
+        'livetime': result['livetime'],
+        'start_time': result['start_time'],
+        'gain': result['gain'],
+        'gain_formula': result['gain_formula'],
+        'fast_count': result['fast_count'],
+        'slow_count': result['slow_count'],
+        'raw_data_length': len(result['RawData']),
+        'fit_status': '',
+    }
 
     fig, axes = plt.subplots(4, 1, figsize=(10, 12), sharex=False)
     plot_series(axes[0], result['RawData'], 'Raw MCA Data', 'Counts')
@@ -283,49 +360,106 @@ def analyze_mca_file(input_file, output_dir):
             fit_x = fit_result['x_fit']
             fit_y = fit_result['y_fit']
             fit_line = fit_slope * fit_x + fit_intercept
-            log_mask = np.isfinite(energy_axis) & np.isfinite(normalized) & (np.asarray(normalized) > 0)
+            fit_line_error = fitted_line_error(fit_x, fit_result)
+            energy_axis_array = np.asarray(energy_axis)
+            normalized_array = np.asarray(normalized)
+            log_mask = np.isfinite(energy_axis_array) & np.isfinite(normalized_array) & (normalized_array > 0)
+            alpha = -fit_slope
+            alpha_error = fit_result['slope_error']
+
+            if alpha != 0:
+                spectral_temperature = 1.0 / alpha
+                if alpha_error is not None:
+                    spectral_temperature_error = alpha_error / (alpha ** 2)
+                else:
+                    spectral_temperature_error = None
+            else:
+                spectral_temperature = None
+                spectral_temperature_error = None
+
             axes[3].plot(
-                np.asarray(energy_axis)[log_mask],
-                np.log(np.asarray(normalized)[log_mask]),
+                energy_axis_array[log_mask],
+                np.log(normalized_array[log_mask]),
                 'o',
                 color='0.75',
                 markersize=2,
                 label='log(data)',
             )
             axes[3].plot(fit_x, fit_y, 'o', markersize=3, label='selected fit range')
-            axes[3].plot(fit_x, fit_line, '-', label=f'Fit: y = {fit_slope:.3g}x + {fit_intercept:.3g}')
+            if fit_line_error is not None:
+                axes[3].fill_between(
+                    fit_x,
+                    fit_line - fit_line_error,
+                    fit_line + fit_line_error,
+                    alpha=0.2,
+                    label='fit line 1-sigma band',
+                )
+                error_step = max(1, len(fit_x) // 12)
+                axes[3].errorbar(
+                    fit_x[::error_step],
+                    fit_line[::error_step],
+                    yerr=fit_line_error[::error_step],
+                    fmt='none',
+                    capsize=3,
+                    linewidth=0.8,
+                    label='fit line error bars',
+                )
+            if spectral_temperature is not None and spectral_temperature_error is not None:
+                fit_label = (
+                    f'Fit: y = {fit_slope:.3g}x + {fit_intercept:.3g}; '
+                    f'Ts = {spectral_temperature:.3g} +/- {spectral_temperature_error:.2g}'
+                )
+            else:
+                fit_label = f'Fit: y = {fit_slope:.3g}x + {fit_intercept:.3g}'
+            axes[3].plot(fit_x, fit_line, '-', label=fit_label)
+            axes[3].text(
+                0.02,
+                0.95,
+                f'Ts = {spectral_temperature:.4g} +/- {spectral_temperature_error:.2g}'
+                if spectral_temperature is not None and spectral_temperature_error is not None
+                else 'Ts error unavailable',
+                transform=axes[3].transAxes,
+                va='top',
+            )
             axes[3].set_xlabel('Energy (keV)')
             axes[3].set_ylabel('ln(counts/s)')
             axes[3].set_title('Log Spectrum with Linear Fit')
             axes[3].legend(loc='best')
-            alpha = -fit_slope
-            spectral_temperature = 1.0 / alpha
-            output_lines.extend([
-                f"Peak energy used to start search: {fit_result['peak_energy']}",
-                f"Selected fit range: {fit_result['min_energy']} to {fit_result['max_energy']} keV",
-                f"Selected fit points: {len(fit_x)}",
-                f"Fit R^2: {fit_result['r_squared']}",
-                f"Fit slope: {fit_slope}",
-                f"Alpha (-slope): {alpha}",
-                f"Fit intercept beta: {fit_intercept}",
-                f"Spectral temperature Ts (1/alpha): {spectral_temperature}",
-            ])
+            row.update({
+                'peak_energy_keV': fit_result['peak_energy'],
+                'fit_range_min_keV': fit_result['min_energy'],
+                'fit_range_max_keV': fit_result['max_energy'],
+                'fit_points': len(fit_x),
+                'fit_r_squared': fit_result['r_squared'],
+                'fit_mean_squared_error': fit_result['mean_squared_error'],
+                'fit_residual_std_error': fit_result['residual_std_error'],
+                'fit_slope': fit_slope,
+                'fit_slope_error': fit_result['slope_error'],
+                'alpha': alpha,
+                'alpha_error': alpha_error,
+                'fit_intercept_beta': fit_intercept,
+                'fit_intercept_beta_error': fit_result['intercept_error'],
+                'spectral_temperature': spectral_temperature,
+                'spectral_temperature_error': spectral_temperature_error,
+                'spectral_temperature_error_type': '1-sigma propagated from slope standard error',
+                'fit_status': 'ok',
+            })
         else:
             axes[3].text(0.5, 0.5, 'Not enough positive data for fitting', ha='center', va='center')
             axes[3].set_title('Log Spectrum with Linear Fit')
-            output_lines.append("Fit: Not enough positive data for fitting")
+            row['fit_status'] = 'not enough positive data for fitting'
     else:
         axes[3].text(0.5, 0.5, 'Livetime is zero or missing', ha='center', va='center')
         axes[3].set_title('Log Spectrum with Linear Fit')
-        output_lines.append("Fit: Livetime is zero or missing")
+        row['fit_status'] = 'livetime is zero or missing'
 
     plt.tight_layout()
     plot_path = output_dir / f"{Path(input_file).stem}_analysis.png"
     fig.savefig(plot_path, dpi=200)
     plt.close(fig)
 
-    output_lines.append(f"Plot file: {plot_path.name}")
-    return output_lines
+    row['plot_file'] = plot_path.name
+    return row
 
 
 def choose_input_folder():
@@ -337,7 +471,7 @@ def choose_input_folder():
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Parse all MCA files in a folder')
+    parser = argparse.ArgumentParser(description='Parse all MCA files in a folder and write a CSV summary')
     parser.add_argument(
         'input_folder',
         nargs='?',
@@ -345,8 +479,8 @@ def main():
     )
     parser.add_argument(
         '--output',
-        default='mca_analysis_results.txt',
-        help='Name of the text report written to the selected folder',
+        default='mca_analysis_results.csv',
+        help='Name of the CSV report written to the selected folder',
     )
     args = parser.parse_args()
 
@@ -363,27 +497,20 @@ def main():
 
     mca_files = sorted(input_folder.glob('*.mca'))
     report_path = input_folder / args.output
-    report_lines = [
-        f"MCA analysis folder: {input_folder}",
-        f"Number of .mca files: {len(mca_files)}",
-        "",
-    ]
+    rows = []
 
-    if not mca_files:
-        report_lines.append("No .mca files found.")
-    else:
-        for mca_file in mca_files:
-            report_lines.extend(analyze_mca_file(mca_file, input_folder))
-            report_lines.append("")
-            report_lines.append("-" * 72)
-            report_lines.append("")
+    for mca_file in mca_files:
+        rows.append(analyze_mca_file(mca_file, input_folder))
 
-    report_path.write_text("\n".join(report_lines), encoding='utf-8')
+    with report_path.open('w', encoding='utf-8', newline='') as fh:
+        writer = csv.DictWriter(fh, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
 
     if not args.input_folder:
         messagebox.showinfo(
             'MCA analysis complete',
-            f'Analyzed {len(mca_files)} .mca files.\n\nReport saved to:\n{report_path}',
+            f'Analyzed {len(mca_files)} .mca files.\n\nCSV saved to:\n{report_path}',
         )
 
 
