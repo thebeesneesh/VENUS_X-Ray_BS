@@ -107,19 +107,27 @@ def parse_mca_file(path):
     }
 
 
-def channel_to_energy(channels, gain=10.0):
-    if gain == 10.0:
+def channel_to_energy(channels, gain=15.0):
+    #if gain == 10.0:
+        #calibration = {
+        #    93.7: 46.5, #Pb-210
+        #    27.7: 10.8, #Pb-210
+        #    160.4: 80.998, #Ba-133
+        #    63.5: 30.973, #Ba-133
+        #      72.0: 34.987, #Ba-133
+        #    81.8: 40.118, #Eu-152
+        #    92.8: 45.414, #Eu-152
+        #    87.5: 42.996, #Eu-154
+        #    99.6: 48.695, #Eu-154
+        #    66.0: 32.194, #Cs-137
+        #}
+    if gain == 15.0:
         calibration = {
-            93.7: 46.5, #Pb-210
-            27.7: 10.8, #Pb-210
-            160.4: 80.998, #Ba-133
-            63.5: 30.973, #Ba-133
-            72.0: 34.987, #Ba-133
-            81.8: 40.118, #Eu-152
-            92.8: 45.414, #Eu-152
-            87.5: 42.996, #Eu-154
-            99.6: 48.695, #Eu-154
-            66.0: 32.194, #Cs-137
+            367: 30.973; #Ba-133
+            381: 32.194; #Cs-137
+            416: 34.987; #Ba-133
+            430: 36.378; #Cs-137;
+            960: 80.9971; #Ba-133;
         }
         x = np.array(list(channels), dtype=float)
         y = np.array(list(calibration.values()), dtype=float)
@@ -182,7 +190,7 @@ def fitted_line_error(x_values, fit_result):
     return np.sqrt(np.maximum(variance, 0.0))
 
 
-def find_most_linear_log_range(x_values, y_values, peak_window=(50.0, 120.0), max_energy=300.0):
+def find_most_linear_log_range(x_values, y_values, peak_window=(50.0, 120.0), max_energy=200.0):
     x = np.asarray(x_values, dtype=float)
     y = np.asarray(y_values, dtype=float)
     finite_positive = np.isfinite(x) & np.isfinite(y) & (y > 0)
@@ -391,19 +399,21 @@ def analyze_mca_file(input_file, output_dir):
                     fit_x,
                     fit_line - fit_line_error,
                     fit_line + fit_line_error,
-                    alpha=0.2,
+                    color='green',
+                    alpha=0.3,
                     label='fit line 1-sigma band',
                 )
-                error_step = max(1, len(fit_x) // 12)
-                axes[3].errorbar(
-                    fit_x[::error_step],
-                    fit_line[::error_step],
-                    yerr=fit_line_error[::error_step],
-                    fmt='none',
-                    capsize=3,
-                    linewidth=0.8,
-                    label='fit line error bars',
-                )
+                #error_step = max(1, len(fit_x) // 12)
+                #axes[3].errorbar(
+                #    fit_x[::error_step],
+                #    fit_line[::error_step],
+                #    yerr=fit_line_error[::error_step],
+                #    fmt='none',
+                #    color='red',
+                #    capsize=3,
+                #    linewidth=0.8,
+                #    label='fit line error bars',
+                #)
             if spectral_temperature is not None and spectral_temperature_error is not None:
                 fit_label = (
                     f'Fit: y = {fit_slope:.3g}x + {fit_intercept:.3g}; '
