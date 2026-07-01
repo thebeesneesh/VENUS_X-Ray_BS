@@ -217,7 +217,7 @@ def fitted_line_error(x_values, fit_result):
     return np.sqrt(np.maximum(variance, 0.0))
 
 
-def find_most_linear_log_range(x_values, y_values, peak_window=(50.0, 120.0), max_energy=400.0):
+def find_most_linear_log_range(x_values, y_values, peak_window=(50.0, 120.0), max_energy=200.0):
     x = np.asarray(x_values, dtype=float)
     y = np.asarray(y_values, dtype=float)
     finite_positive = np.isfinite(x) & np.isfinite(y) & (y > 0)
@@ -353,6 +353,8 @@ CSV_COLUMNS = [
 
 
 def analyze_mca_file(input_file, output_dir):
+    PLOT_MAX_ENERGY_KEV = 300.0
+
     result = parse_mca_file(input_file)
     row = {
         'file': result['file'],
@@ -366,19 +368,25 @@ def analyze_mca_file(input_file, output_dir):
         'fit_status': '',
     }
 
-    fig, axes = plt.subplots(5, 1, figsize=(10, 15), sharex=False)
+    fig, axes = plt.subplots(3, 1, figsize=(10, 12), sharex=False)
+
+    # --- (0) Raw MCA Data plot: unchanged ---
     plot_series(axes[0], result['RawData'], 'Raw MCA Data', 'Counts')
 
+    # --- normalize ---
     if result['livetime'] not in (None, 0):
         normalized = [value / result['livetime'] for value in result['RawData']]
-        plot_series(axes[1], normalized, 'Normalized MCA Data (Counts/s)', 'Counts/s')
+        plot_title_note = f"(Livetime={result['livetime']})"
     else:
         normalized = result['RawData']
-        axes[1].text(0.5, 0.5, 'Livetime is zero or missing', ha='center', va='center')
-        axes[1].set_title('Normalized MCA Data')
+        axes[0].text(0.5, 0.02, 'Livetime is zero or missing', transform=axes[0].transAxes,
+                     ha='center', va='bottom')
+        plot_title_note = '(Livetime missing/zero)'
 
+    # --- energy axis + efficiency-corrected ---
     energy_axis = channel_to_energy(range(len(result['RawData'])), gain=10.0)
     efficiency = detector_absorption_efficiency(energy_axis)
+
     normalized_array = np.asarray(normalized, dtype=float)
     corrected = np.divide(
         normalized_array,
@@ -387,24 +395,34 @@ def analyze_mca_file(input_file, output_dir):
         where=np.isfinite(efficiency) & (efficiency > 0),
     )
 
-    plot_series(
-        axes[2],
-        normalized,
-        'Normalized MCA Data vs Energy',
-        'Counts/s',
-        x_values=energy_axis,
-        x_label='Energy (keV)',
-    )
+    energy_axis_array = np.asarray(energy_axis, dtype=float)
+    in_plot_energy_mask = np.isfinite(energy_axis_array) & (energy_axis_array <= PLOT_MAX_ENERGY_KEV)
 
-    plot_series(
-        axes[3],
-        corrected,
-        'Detector Efficiency-Corrected Data vs Energy',
-        'Counts/s / absorption probability',
-        x_values=energy_axis,
-        x_label='Energy (keV)',
+    # --- (1) NEW combined plot: normalized + corrected vs energy ---
+    axes[1].plot(
+        energy_axis_array[in_plot_energy_mask],
+        normalized_array[in_plot_energy_mask],
+        linewidth=1,
+        label='Normalized (Counts/s)',
     )
+    axes[1].plot(
+        energy_axis_array[in_plot_energy_mask],
+        corrected[in_plot_energy_mask],
+        linewidth=1,
+        label='Efficiency-corrected (Counts/s / absorption probability)',
+    )
+    axes[1].set_xlabel('Energy (keV)')
+    axes[1].set_ylabel('Counts/s')
+    axes[1].set_title(f'Normalized and Efficiency-Corrected Spectra vs Energy {plot_title_note}')
+    axes[1].legend(loc='best')
 
+    # Set x-range on energy plots to 300 keV max
+    if np.any(in_plot_energy_mask):
+        axes[1].set_xlim(float(np.nanmin(energy_axis_array[in_plot_energy_mask])), PLOT_MAX_ENERGY_KEV)
+    else:
+        axes[1].set_xlim(0, PLOT_MAX_ENERGY_KEV)
+
+    # --- (2) log plot + fit: efficiency-corrected only, up to 300 keV ---
     if result['livetime'] not in (None, 0):
         fit_result = fit_log_linear(energy_axis, corrected)
         if fit_result is not None:
@@ -414,19 +432,32 @@ def analyze_mca_file(input_file, output_dir):
             fit_y = fit_result['y_fit']
             fit_line = fit_slope * fit_x + fit_intercept
             fit_line_error = fitted_line_error(fit_x, fit_result)
+
+            # Shade fit range on the combined plot
             fit_range_min = fit_x[0]
             fit_range_max = fit_x[-1]
-            for shaded_axis in (axes[2], axes[3]):
-                shaded_axis.axvspan(
-                    fit_range_min,
-                    fit_range_max,
-                    color='0.85',
-                    alpha=0.6,
+            # Shade the raw-data (channel) plot corresponding to the same ENERGY fit range
+            channels_axis = np.arange(len(energy_axis_array), dtype=float)
+            raw_fit_mask = (energy_axis_array >= fit_range_min) & (energy_axis_array <= fit_range_max)
+
+            if np.any(raw_fit_mask):
+                raw_cmin = channels_axis[raw_fit_mask].min()
+                raw_cmax = channels_axis[raw_fit_mask].max()
+                axes[0].axvspan(
+                    raw_cmin,
+                    raw_cmax,
+                    color='lightgreen',
+                    alpha=0.25,
                     zorder=0,
-                )
-            energy_axis_array = np.asarray(energy_axis)
-            corrected_array = np.asarray(corrected)
-            log_mask = np.isfinite(energy_axis_array) & np.isfinite(corrected_array) & (corrected_array > 0)
+            )
+            axes[1].axvspan(
+                fit_range_min,
+                fit_range_max,
+                color='0.85',
+                alpha=0.6,
+                zorder=0,
+            )
+
             alpha = -fit_slope
             alpha_error = fit_result['slope_error']
 
@@ -440,17 +471,25 @@ def analyze_mca_file(input_file, output_dir):
                 spectral_temperature = None
                 spectral_temperature_error = None
 
-            axes[4].plot(
-                energy_axis_array[log_mask],
-                np.log(corrected_array[log_mask]),
+            corrected_mask = (
+                np.isfinite(energy_axis_array)
+                & np.isfinite(corrected)
+                & (corrected > 0)
+                & (energy_axis_array <= PLOT_MAX_ENERGY_KEV)
+            )
+
+            axes[2].plot(
+                energy_axis_array[corrected_mask],
+                np.log(corrected[corrected_mask]),
                 'o',
                 color='0.75',
                 markersize=2,
                 label='log(efficiency-corrected data)',
             )
-            axes[4].plot(fit_x, fit_y, 'o', markersize=3, label='selected fit range')
+            axes[2].plot(fit_x, fit_y, 'o', markersize=3, label='selected fit range')
+
             if fit_line_error is not None:
-                axes[4].fill_between(
+                axes[2].fill_between(
                     fit_x,
                     fit_line - fit_line_error,
                     fit_line + fit_line_error,
@@ -458,17 +497,7 @@ def analyze_mca_file(input_file, output_dir):
                     alpha=0.3,
                     label='fit line 1-sigma band',
                 )
-                #error_step = max(1, len(fit_x) // 12)
-                #axes[3].errorbar(
-                #    fit_x[::error_step],
-                #    fit_line[::error_step],
-                #    yerr=fit_line_error[::error_step],
-                #    fmt='none',
-                #    color='red',
-                #    capsize=3,
-                #    linewidth=0.8,
-                #    label='fit line error bars',
-                #)
+
             if spectral_temperature is not None and spectral_temperature_error is not None:
                 fit_label = (
                     f'Fit: y = {fit_slope:.3g}x + {fit_intercept:.3g}; '
@@ -476,20 +505,24 @@ def analyze_mca_file(input_file, output_dir):
                 )
             else:
                 fit_label = f'Fit: y = {fit_slope:.3g}x + {fit_intercept:.3g}'
-            axes[4].plot(fit_x, fit_line, '-', label=fit_label)
-            axes[4].text(
+
+            axes[2].plot(fit_x, fit_line, '-', label=fit_label)
+            axes[2].text(
                 0.02,
                 0.95,
                 f'Ts = {spectral_temperature:.4g} +/- {spectral_temperature_error:.2g}'
                 if spectral_temperature is not None and spectral_temperature_error is not None
                 else 'Ts error unavailable',
-                transform=axes[4].transAxes,
+                transform=axes[2].transAxes,
                 va='top',
             )
-            axes[4].set_xlabel('Energy (keV)')
-            axes[4].set_ylabel('ln(corrected counts/s)')
-            axes[4].set_title('Log Efficiency-Corrected Spectrum with Linear Fit')
-            axes[4].legend(loc='best')
+
+            axes[2].set_xlabel('Energy (keV)')
+            axes[2].set_ylabel('ln(corrected counts/s)')
+            axes[2].set_title('Log Efficiency-Corrected Spectrum with Linear Fit')
+            axes[2].set_xlim(0, PLOT_MAX_ENERGY_KEV)
+            axes[2].legend(loc='best')
+
             row.update({
                 'peak_energy_keV': fit_result['peak_energy'],
                 'fit_range_min_keV': fit_result['min_energy'],
@@ -510,12 +543,14 @@ def analyze_mca_file(input_file, output_dir):
                 'fit_status': 'ok',
             })
         else:
-            axes[4].text(0.5, 0.5, 'Not enough positive data for fitting', ha='center', va='center')
-            axes[4].set_title('Log Efficiency-Corrected Spectrum with Linear Fit')
+            axes[2].text(0.5, 0.5, 'Not enough positive data for fitting', ha='center', va='center')
+            axes[2].set_title('Log Efficiency-Corrected Spectrum with Linear Fit')
+            axes[2].set_xlim(0, PLOT_MAX_ENERGY_KEV)
             row['fit_status'] = 'not enough positive data for fitting'
     else:
-        axes[4].text(0.5, 0.5, 'Livetime is zero or missing', ha='center', va='center')
-        axes[4].set_title('Log Efficiency-Corrected Spectrum with Linear Fit')
+        axes[2].text(0.5, 0.5, 'Livetime is zero or missing', ha='center', va='center')
+        axes[2].set_title('Log Efficiency-Corrected Spectrum with Linear Fit')
+        axes[2].set_xlim(0, PLOT_MAX_ENERGY_KEV)
         row['fit_status'] = 'livetime is zero or missing'
 
     plt.tight_layout()
@@ -525,7 +560,6 @@ def analyze_mca_file(input_file, output_dir):
 
     row['plot_file'] = plot_path.name
     return row
-
 
 def choose_input_folder():
     root = tk.Tk()
