@@ -234,7 +234,7 @@ def smooth_signal(values, window=7):
     return np.convolve(padded, kernel, mode='valid')
 
 
-def find_most_linear_log_range(x_values, y_values, peak_window=(50.0, 120.0), max_energy=200.0):
+def find_most_linear_log_range(x_values, y_values, peak_window=(75.0, 150.0), max_energy=250.0):
     x = np.asarray(x_values, dtype=float)
     y = np.asarray(y_values, dtype=float)
     finite_positive = np.isfinite(x) & np.isfinite(y) & (y > 0)
@@ -453,6 +453,7 @@ def analyze_mca_file(input_file, output_dir):
         plot_energy_array,
         plot_raw_counts_array,
         linewidth=1,
+        label='Raw counts',
     )
     axes[1, 0].set_xlabel('Energy (keV)')
     axes[1, 0].set_ylabel('Counts')
@@ -560,9 +561,13 @@ def analyze_mca_file(input_file, output_dir):
             )
             axes[1, 1].plot(fit_x, fit_y, 'o', markersize=3, label='Selected fit range')
 
-            high_energy_log_values = np.log(
-                corrected[(energy_axis_array <= PLOT_MAX_ENERGY_KEV) & (energy_axis_array >= 280.0)]
-            )
+            high_energy_log_values = corrected[
+                (energy_axis_array <= PLOT_MAX_ENERGY_KEV)
+                & (energy_axis_array >= 280.0)
+                & np.isfinite(corrected)
+                & (corrected > 0)
+            ]
+            high_energy_log_values = np.log(high_energy_log_values)
             high_energy_log_values = high_energy_log_values[np.isfinite(high_energy_log_values)]
             if high_energy_log_values.size:
                 axes[1, 1].set_ylim(bottom=float(np.nanmin(high_energy_log_values) - 0.05))
