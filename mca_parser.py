@@ -241,7 +241,7 @@ def find_most_linear_log_range(x_values, y_values, peak_window=(75.0, 150.0), ma
 
     x = x[finite_positive]
     y = y[finite_positive]
-    if len(x) < 2:
+    if len(x) < 3:
         return None
 
     order = np.argsort(x)
@@ -257,19 +257,23 @@ def find_most_linear_log_range(x_values, y_values, peak_window=(75.0, 150.0), ma
 
     peak_mask = (x >= peak_window[0]) & (x <= peak_window[1])
     if np.any(peak_mask):
-        peak_idx = np.argmax(smooth_y[peak_mask])
-        peak_idx = np.flatnonzero(peak_mask)[peak_idx]
+        peak_candidates = np.flatnonzero(peak_mask)
+        peak_idx = int(peak_candidates[np.argmax(smooth_y[peak_mask])])
     else:
         peak_idx = int(np.argmax(smooth_y))
 
     peak_energy = float(x[peak_idx])
 
-    post_peak_sign_change = np.where((d_y_dx[peak_idx:-1] >= 0) & (d_y_dx[peak_idx + 1:] < 0))[0]
-    if post_peak_sign_change.size:
-        decay_start_idx = peak_idx + post_peak_sign_change[0] + 1
+    if peak_idx >= len(d_y_dx) - 1:
+        decay_start_idx = max(peak_idx, 0)
     else:
-        decay_start_idx = peak_idx + max(1, len(x) // 50)
+        post_peak_sign_change = np.where((d_y_dx[peak_idx:-1] >= 0) & (d_y_dx[peak_idx + 1:] < 0))[0]
+        if post_peak_sign_change.size:
+            decay_start_idx = peak_idx + post_peak_sign_change[0] + 1
+        else:
+            decay_start_idx = peak_idx + max(1, len(x) // 50)
 
+    decay_start_idx = int(np.clip(decay_start_idx, 0, len(x) - 1))
     min_energy = max(float(x[decay_start_idx]), peak_energy + 2.0, 80.0)
 
     upper_energy = float(max_energy)
