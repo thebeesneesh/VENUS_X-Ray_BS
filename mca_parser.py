@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.ticker import FuncFormatter, LogFormatterMathtext, LogLocator
+from matplotlib.widgets import SpanSelector
 
 
 EFF_ENERGY_KEV = np.array([
@@ -333,26 +334,33 @@ def find_most_linear_log_range(x_values, y_values, peak_window=(75.0, 150.0), ma
     return best
 
 
-def fit_log_linear(x_values, y_values):
-    best_range = find_most_linear_log_range(x_values, y_values)
-    if best_range is not None:
-        return best_range
-
+def fit_log_linear(x_values, y_values, fit_range=None):
     x = np.asarray(x_values, dtype=float)
     y = np.asarray(y_values, dtype=float)
+
     mask = np.isfinite(x) & np.isfinite(y) & (y > 0)
-    x_fit = x[mask]
-    y_fit = np.log(y[mask])
+
+    if fit_range is not None:
+        minimum, maximum = sorted(fit_range)
+        mask &= (x >= minimum) & (x <= maximum)
+        x_fit = x[mask]
+        y_fit = np.log(y[mask])
+    else:
+        return find_most_linear_log_range(x_values, y_values)
+
     if len(x_fit) < 2:
         return None
+
     slope, intercept = np.polyfit(x_fit, y_fit, 1)
-    r_squared, mean_squared_error = score_linear_fit(x_fit, y_fit, slope, intercept)
-    slope_error, intercept_error, residual_std_error, slope_intercept_covariance = linear_fit_uncertainties(
-        x_fit,
-        y_fit,
-        slope,
-        intercept,
+    r_squared, mean_squared_error = score_linear_fit(
+        x_fit, y_fit, slope, intercept
     )
+    slope_error, intercept_error, residual_std_error, covariance = (
+        linear_fit_uncertainties(
+            x_fit, y_fit, slope, intercept
+        )
+    )
+
     return {
         'score': r_squared,
         'slope': slope,
@@ -364,7 +372,7 @@ def fit_log_linear(x_values, y_values):
         'slope_error': slope_error,
         'intercept_error': intercept_error,
         'residual_std_error': residual_std_error,
-        'slope_intercept_covariance': slope_intercept_covariance,
+        'slope_intercept_covariance': covariance,
         'peak_energy': None,
         'min_energy': x_fit[0],
         'max_energy': x_fit[-1],
@@ -419,6 +427,8 @@ def analyze_mca_file(input_file, output_dir):
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 12), sharex=False)
     axes = np.asarray(axes)
+
+    fig.suptitle(Path(input_file).stem, fontsize=16, fontweight='bold', y=0.995)
 
     # --- (0) Raw MCA Data plot: unchanged ---
     plot_series(axes[0, 0], result['RawData'], 'Raw MCA Data', 'Counts')
@@ -497,7 +507,76 @@ def analyze_mca_file(input_file, output_dir):
 
     # --- (3) log plot + fit: efficiency-corrected only, up to 300 keV ---
     if result['livetime'] not in (None, 0):
-        fit_result = fit_log_linear(energy_axis, corrected)
+        # --- Select fit range interactively on the raw counts vs energy plot ---
+        selected_fit_range = [None, None]
+        selected_range_highlight = [None]
+
+        def on_select(x_min, x_max):
+            selected_fit_range[:] = sorted((x_min, x_max))
+
+            # Remove the previous highlight from the normalized-energy plot.
+            if selected_range_highlight[0] is not None:
+                selected_range_highlight[0].remove()
+
+            # Highlight the same energy range on the normalized plot.
+            selected_range_highlight[0] = axes[0, 1].axvspan(
+                x_min,
+                x_max,
+                color='tab:blue',
+                alpha=0.25,
+                label='Selected fit range',
+            )
+
+            axes[1, 0].set_title(
+                f'Raw Counts vs Energy '
+                f'(selected: {x_min:.2f}–{x_max:.2f} keV)'
+            )
+            axes[0, 1].set_title(
+                'Normalized and Efficiency-Corrected Spectra '
+                f'(selected: {x_min:.2f}–{x_max:.2f} keV)'
+            )
+
+            axes[0, 1].legend(loc='lower left')
+            fig.canvas.draw_idle()
+
+        selector = SpanSelector(
+            axes[1, 0],
+            on_select,
+            'horizontal',
+            useblit=True,
+            props={
+                'facecolor': 'tab:blue',
+                'alpha': 0.25,
+            },
+            interactive=True,
+        )
+
+        axes[1, 0].set_title(
+            'Raw Counts vs Energy '
+            '(drag to select fit range, then close window)'
+        )
+
+        axes[0, 1].set_title(
+            'Normalized and Efficiency-Corrected Spectra '
+            '(selection will be highlighted here)'
+        )
+
+        axes[1, 1].set_visible(False)
+
+        fig.tight_layout(rect=(0, 0, 1, 0.97))
+        plt.show()
+
+        axes[1, 1].set_visible(True)
+
+        if selected_fit_range[0] is not None:
+            fit_result = fit_log_linear(
+                energy_axis,
+                corrected,
+                fit_range=selected_fit_range,
+            )
+        else:
+            fit_result = None
+
         if fit_result is not None:
             fit_slope = fit_result['slope']
             fit_intercept = fit_result['intercept']
@@ -644,7 +723,7 @@ def analyze_mca_file(input_file, output_dir):
 
     plt.tight_layout()
     plot_path = output_dir / f"{Path(input_file).stem}_analysis.png"
-    fig.savefig(plot_path, dpi=200)
+    fig.savefig(plot_path, dpi=200, bbox_inches='tight')
     plt.close(fig)
 
     row['plot_file'] = plot_path.name
