@@ -9,5 +9,16 @@
     "w_length": 100.0,
     "cu_aperture": 3.0,
     "w_aperture": 1.0
+  },
+  "actual_24SEP26": {
+    "extraction_to_detector": 2646.0,
+    "extraction_to_puller": 20.0,
+    "puller_to_cu": 1679.4,
+    "cu_to_w": 588.0,
+    "w_to_detector": 126.0,
+    "cu_length": 103.0,
+    "w_length": 129.6,
+    "cu_aperture": 3.0,
+    "w_aperture": 1.0
   }
 }

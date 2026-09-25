@@ -3,6 +3,7 @@ from tkinter import messagebox, ttk, filedialog
 
 import matplotlib
 matplotlib.use("TkAgg")
+from matplotlib.figure import Figure
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -272,6 +273,7 @@ class VenusApp(tk.Tk):
         self.geometry("1100x750")
 
         self.calculator = VenusBFieldCalculator()
+        self._axial_plot_data = None
         self._create_tabs()
 
     @staticmethod
@@ -396,6 +398,43 @@ class VenusApp(tk.Tk):
             padx=10,
             pady=10,
         )
+    def _draw_total_axial(
+        self, ax, total, injection_index, extraction_index, minimum_index
+    ):
+        ax.clear()
+        ax.plot(self.calculator.z_cm, total, linewidth=2)
+        ax.axhline(
+            0.64, color="red", linestyle="--",
+            label="18 GHz resonance: 0.64 T",
+        )
+        ax.axhline(
+            1.00, color="green", linestyle="--",
+            label="28 GHz resonance: 1.00 T",
+        )
+
+        ax.set_title("Axial Magnetic Field")
+        ax.set_xlabel("Z (cm)")
+        ax.set_ylabel("Bz (T)")
+        ax.grid(True, axis="y")
+
+        resonance_legend = ax.legend(loc="upper right")
+        ax.add_artist(resonance_legend)
+
+        value_handles = [
+            Line2D([], [], color="none",
+                   label=f"$B_{{inj}}$ = {total[injection_index]:.2f} T"),
+            Line2D([], [], color="none",
+                   label=f"$B_{{extr}}$ = {total[extraction_index]:.2f} T"),
+            Line2D([], [], color="none",
+                   label=f"$B_{{min}}$ = {total[minimum_index]:.2f} T"),
+        ]
+        ax.legend(
+            handles=value_handles,
+            loc="upper left",
+            handlelength=0,
+            handletextpad=0,
+            fontsize=9,
+        )
 
     def _calculate_axial(self):
         try:
@@ -438,66 +477,13 @@ class VenusApp(tk.Tk):
                 np.argmin(total[minimum_indices])
             ]
 
-            self.axial_axes[0].clear()
-            self.axial_axes[0].plot(
-                self.calculator.z_cm,
-                total,
-                linewidth=2,
-                #label="Total axial field",
-            )
-            self.axial_axes[0].axhline(
-                0.64,
-                color="red",
-                linestyle="--",
-                label="18 GHz resonance: 0.64 T",
-            )
-            self.axial_axes[0].axhline(
-                1.00,
-                color="green",
-                linestyle="--",
-                label="28 GHz resonance: 1.00 T",
-            )
-
-            self.axial_axes[0].set_title("Axial Magnetic Field")
-            self.axial_axes[0].set_xlabel("Z (cm)")
-            self.axial_axes[0].set_ylabel("Bz (T)")
-            self.axial_axes[0].grid(True, axis="y")
-
-            # First legend: the plotted lines (resonances)
-            resonance_legend = self.axial_axes[0].legend(loc="upper right")
-
-            # Re-attach it so the next legend() call doesn't replace it
-            self.axial_axes[0].add_artist(resonance_legend)
-
-            # Second, text-only legend on the left with the field values
-            value_handles = [
-                Line2D(
-                    [],
-                    [],
-                    color="none",
-                    label=f"$B_{{inj}}$ = {total[injection_index]:.2f} T",
-                ),
-                Line2D(
-                    [],
-                    [],
-                    color="none",
-                    label=f"$B_{{extr}}$ = {total[extraction_index]:.2f} T",
-                ),
-                Line2D(
-                    [],
-                    [],
-                    color="none",
-                    label=f"$B_{{min}}$ = {total[minimum_index]:.2f} T",
-                ),
-            ]
-
-            self.axial_axes[0].legend(
-                handles=value_handles,
-                loc="upper left",
-                handlelength=0,
-                handletextpad=0,
-                fontsize=9,
-            )
+            self._axial_plot_data = {
+                "total": total,
+                "injection_index": injection_index,
+                "extraction_index": extraction_index,
+                "minimum_index": minimum_index,
+            }
+            self._draw_total_axial(self.axial_axes[0], **self._axial_plot_data)
 
             self.axial_axes[1].clear()
             self.axial_axes[1].plot(
@@ -551,6 +537,9 @@ class VenusApp(tk.Tk):
                 "Enter valid numeric axial currents.",
             )
     def _save_axial_plot(self):
+        if self._axial_plot_data is None:
+            return
+
         path = filedialog.asksaveasfilename(
             title="Save axial field plot",
             defaultextension=".png",
@@ -567,8 +556,14 @@ class VenusApp(tk.Tk):
         if not path:
             return
 
+        # 9 x 6 inches = 3:2; at 250 dpi this is 2250 x 1500 pixels.
+        export_figure = Figure(figsize=(6, 4))
+        export_axis = export_figure.add_subplot()
+        self._draw_total_axial(export_axis, **self._axial_plot_data)
+        export_figure.tight_layout()
+
         try:
-            self.axial_figure.savefig(path, dpi=300, bbox_inches="tight")
+            export_figure.savefig(path, dpi=300)
         except Exception as error:
             messagebox.showerror(
                 "Save failed",
