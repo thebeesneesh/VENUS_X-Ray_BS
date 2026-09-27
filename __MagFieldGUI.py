@@ -412,7 +412,7 @@ class VenusApp(tk.Tk):
             label="28 GHz resonance: 1.00 T",
         )
 
-        ax.set_title("Axial Magnetic Field")
+        #ax.set_title("Axial Magnetic Field")
         ax.set_xlabel("Z (cm)")
         ax.set_ylabel("Bz (T)")
         ax.grid(True, axis="y")

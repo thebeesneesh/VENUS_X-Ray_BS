@@ -200,18 +200,18 @@ def analyze_file(filename, plot=True):
         for peak_idx in selected_peak_indices:
             label = selected_peak_labels.get(peak_idx, '')
             ax.annotate(
-                f'{label}\nM/Q={x[peak_idx]:.3f}\n{y[peak_idx]:.1f} uA',
+                label,
                 (x[peak_idx], y[peak_idx]),
                 textcoords='offset points',
-                xytext=(0, 8),
+                xytext=(0, 6),
                 ha='center',
-                fontsize=8,
+                fontsize=9,
             )
         ax.set_xlabel('M/Q')
         ax.set_ylabel('Beam Current (µA)')
-        ax.set_xlim(1.0, 8.2)
+        ax.set_xlim(1.0, 9)
         ax.set_title(f'{Path(filename).name} - {title_date}')
-        ax.legend()
+        #ax.legend()
 
         calibration_current_range = np.linspace(
             calibration_current.min(),
